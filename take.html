@@ -121,11 +121,30 @@ function tone(freq, dur, type, vol, delay) {
   o.connect(g); g.connect(ac.destination);
   o.start(t); o.stop(t + dur + 0.05);
 }
-const sCorrect = () => { tone(659, .14, 'sine', .25); tone(880, .22, 'sine', .25, .11); };
+const sCorrect = () => {
+  [523, 659, 784, 1047].forEach((f, k) => { tone(f, .16, 'triangle', .26, k * .09); tone(f * 2, .1, 'sine', .07, k * .09); });
+  tone(1568, .35, 'sine', .1, .42);
+};
 const sWrong = () => { tone(180, .25, 'sawtooth', .18); tone(140, .3, 'sawtooth', .15, .1); };
 const sTick = () => tone(1050, .05, 'square', .08);
-const sStreak = () => { tone(523, .12, 'sine', .22); tone(659, .12, 'sine', .22, .1); tone(784, .2, 'sine', .22, .2); };
+const sStreak = () => { [523, 659, 784, 1047, 1319].forEach((f, k) => { tone(f, .14, 'triangle', .24, k * .08); tone(f * 2, .09, 'sine', .06, k * .08); }); };
 const sFinish = () => { [523, 659, 784, 1047].forEach((f, k) => tone(f, .18, 'triangle', .24, k * .14)); };
+// خلفية محفزة هادية أثناء السؤال
+let bgId = null, bgStep = 0;
+const BGNOTES = [523, 659, 784, 659, 587, 740, 880, 740];
+function startBg() {
+  stopBg();
+  if (muted) return;
+  bgStep = 0;
+  bgId = setInterval(() => {
+    if (muted) return;
+    const f = BGNOTES[bgStep % BGNOTES.length];
+    tone(f, .2, 'triangle', .026);
+    if (bgStep % 2 === 0) tone(f / 2, .32, 'sine', .018);
+    bgStep++;
+  }, 460);
+}
+function stopBg() { if (bgId) { clearInterval(bgId); bgId = null; } }
 function toggleMute() { muted = !muted; document.getElementById('mutebtn').textContent = muted ? '🔇' : '🔊'; }
 
 function shuffle(a) { a = a.slice(); for (let j = a.length - 1; j > 0; j--) { const k = Math.floor(Math.random() * (j + 1)); [a[j], a[k]] = [a[k], a[j]]; } return a; }
@@ -190,11 +209,13 @@ function render() {
   why.className = 'why'; why.innerHTML = '';
   document.getElementById('nextbtn').className = 'next';
   startTimer();
+  startBg();
 }
 function settle(idx, btn, timedOut) {
   if (answered) return;
   answered = true;
   clearInterval(timerId);
+  stopBg();
   const q = qs[i];
   const opts = document.querySelectorAll('#opts .opt');
   opts.forEach(o => o.disabled = true);
