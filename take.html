@@ -3,63 +3,94 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>الاختبار</title>
+<title>تحدي</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  :root { --green:#0b5830; --green2:#107c41; --bg:#f6fbf8; --cream:#f5f0e1; --red:#c81e1e; --ink:#1c2b23; }
+  :root { --green:#0b5830; --green2:#107c41; --bg:#f6fbf8; --cream:#f5f0e1; --red:#c81e1e; --ink:#1c2b23; --gold:#d9a400; }
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:'Segoe UI', Tahoma, Arial, sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+  body { font-family:'Segoe UI', Tahoma, Arial, sans-serif; background:linear-gradient(180deg,#eef7f1,#f6fbf8); color:var(--ink); min-height:100vh; }
   .wrap { max-width:720px; margin:0 auto; padding:24px 16px 60px; }
-  header { text-align:center; padding:22px 0 8px; }
-  header .logo { display:inline-block; background:var(--green); color:var(--cream); padding:8px 22px; border-radius:40px; font-weight:bold; font-size:20px; }
+  header { text-align:center; padding:22px 0 8px; position:relative; }
+  header .logo { display:inline-block; background:var(--green); color:var(--cream); padding:8px 26px; border-radius:40px; font-weight:bold; font-size:24px; letter-spacing:.5px; }
+  header .sub { color:#5a6b60; margin-top:8px; font-size:14px; }
+  .mute { position:absolute; left:0; top:24px; background:#fff; border:2px solid #dce9e0; border-radius:50%; width:42px; height:42px; font-size:19px; cursor:pointer; }
   .card { background:#fff; border-radius:18px; box-shadow:0 4px 18px rgba(11,88,48,.08); padding:26px 22px; margin-top:20px; }
   input[type=text] { width:100%; padding:12px 14px; border:2px solid #dce9e0; border-radius:12px; font-size:16px; font-family:inherit; background:var(--bg); }
   input:focus { outline:none; border-color:var(--green2); }
-  .meta { display:flex; justify-content:space-between; color:#5a6b60; font-size:14px; margin-bottom:14px; }
-  .bar { height:8px; background:#e4efe8; border-radius:6px; overflow:hidden; margin-bottom:20px; }
+  .hud { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .pill { background:var(--bg); border:2px solid #dce9e0; border-radius:30px; padding:6px 14px; font-size:15px; font-weight:bold; color:var(--green); white-space:nowrap; }
+  .pill.streak { color:#c25e00; border-color:#f0dcb8; background:#fff8e8; }
+  .pill.streak.zero { visibility:hidden; }
+  .pill.timer { min-width:64px; text-align:center; transition:.2s; }
+  .pill.timer.low { color:var(--red); border-color:var(--red); background:#fbeaea; animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { transform:scale(1.08); } }
+  .bar { height:8px; background:#e4efe8; border-radius:6px; overflow:hidden; margin-bottom:18px; }
   .bar div { height:100%; background:var(--green2); width:0%; transition:width .3s; }
-  .q { font-size:19px; font-weight:bold; line-height:1.7; margin-bottom:18px; }
+  .q { font-size:19px; font-weight:bold; line-height:1.7; margin-bottom:16px; }
   .opt { display:block; width:100%; text-align:right; background:var(--bg); border:2px solid #dce9e0; border-radius:12px; padding:14px 16px; margin-top:10px; cursor:pointer; font-size:16px; line-height:1.6; transition:.15s; font-family:inherit; }
   .opt:hover:not(:disabled) { border-color:var(--green2); }
-  .opt:disabled { cursor:default; opacity:.85; }
+  .opt:disabled { cursor:default; opacity:.9; }
   .opt.right { background:#e6f6ec; border-color:var(--green2); color:var(--green); font-weight:bold; }
   .opt.wrong { background:#fbeaea; border-color:var(--red); color:var(--red); }
-  .why { display:none; margin-top:16px; background:#fff8e8; border-right:4px solid #d9a400; border-radius:10px; padding:14px 16px; font-size:15px; line-height:1.8; }
+  .gain { text-align:center; font-size:22px; font-weight:bold; color:var(--green2); margin-top:14px; min-height:30px; animation:pop .35s; }
+  @keyframes pop { 0% { transform:scale(.5); opacity:0; } 100% { transform:scale(1); opacity:1; } }
+  .why { display:none; margin-top:14px; background:#fff8e8; border-right:4px solid var(--gold); border-radius:10px; padding:14px 16px; font-size:15px; line-height:1.8; }
   .why.show { display:block; }
   .why b { color:#8a6500; }
-  .next, .btn { display:none; width:100%; margin-top:18px; background:var(--green); color:#fff; border:0; border-radius:12px; padding:15px; font-size:17px; font-weight:bold; cursor:pointer; }
-  .next.show, .btn { display:block; }
-  .btn { display:block; }
-  .score-big { font-size:48px; font-weight:bold; color:var(--green); text-align:center; }
-  .score-sub { text-align:center; color:#5a6b60; margin:10px 0 8px; font-size:16px; }
+  .next, .btn { width:100%; margin-top:16px; background:var(--green); color:#fff; border:0; border-radius:12px; padding:15px; font-size:17px; font-weight:bold; cursor:pointer; }
+  .next { display:none; }
+  .next.show { display:block; }
+  .score-big { font-size:52px; font-weight:bold; color:var(--green); text-align:center; }
+  .score-label { text-align:center; color:#5a6b60; font-size:14px; margin-top:2px; }
+  .stats { display:flex; gap:10px; margin:18px 0 4px; }
+  .stat { flex:1; background:var(--bg); border-radius:12px; padding:12px 8px; text-align:center; }
+  .stat b { display:block; font-size:20px; color:var(--green); }
+  .stat span { font-size:12px; color:#5a6b60; }
+  .score-sub { text-align:center; color:#5a6b60; margin:12px 0 4px; font-size:16px; }
   .muted { color:#8a9a90; font-size:13px; text-align:center; margin-top:16px; }
   .err { background:#fbeaea; color:var(--red); border-radius:10px; padding:12px; margin-top:14px; font-size:14px; display:none; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header><span class="logo" id="qtitle">الاختبار</span></header>
+  <header>
+    <button class="mute" id="mutebtn" onclick="toggleMute()" title="الصوت">🔊</button>
+    <span class="logo">تحدي 🎯</span>
+    <div class="sub" id="qtitle">اختبار</div>
+  </header>
 
   <div class="card" id="nameCard">
-    <p style="font-size:16px;margin-bottom:12px;">اكتب اسمك ليبدأ الاختبار:</p>
+    <p style="font-size:16px;margin-bottom:12px;">اكتب اسمك ليبدأ التحدي:</p>
     <input type="text" id="sname" placeholder="اسمك">
-    <button class="btn" onclick="begin()">ابدأ الاختبار</button>
+    <button class="btn" onclick="begin()">ابدأ 🎮</button>
     <div class="err" id="nameErr"></div>
   </div>
 
   <div class="card" id="quiz" style="display:none;">
-    <div class="meta"><span id="counter"></span><span id="running"></span></div>
+    <div class="hud">
+      <span class="pill" id="scorepill">⭐ 0</span>
+      <span class="pill streak zero" id="streakpill">🔥 ×0</span>
+      <span class="pill timer" id="timerpill">20</span>
+    </div>
+    <div class="meta" style="display:flex;justify-content:space-between;color:#5a6b60;font-size:13px;margin-bottom:10px;"><span id="counter"></span></div>
     <div class="bar"><div id="prog"></div></div>
     <div class="q" id="qtext"></div>
     <div id="opts"></div>
+    <div class="gain" id="gain"></div>
     <div class="why" id="why"></div>
     <button class="next" id="nextbtn" onclick="next()"></button>
   </div>
 
   <div class="card" id="result" style="display:none;">
     <div class="score-big" id="scorenum"></div>
+    <div class="score-label">نقطة</div>
+    <div class="stats">
+      <div class="stat"><b id="rcorrect"></b><span>إجابات صحيحة</span></div>
+      <div class="stat"><b id="rbest"></b><span>أطول سلسلة 🔥</span></div>
+      <div class="stat"><b id="rtime"></b><span>الوقت</span></div>
+    </div>
     <div class="score-sub" id="scoremsg"></div>
-    <p class="muted">تم إرسال نتيجتك لمدربك. شكرًا لك.</p>
+    <p class="muted">تم إرسال نتيجتك لمدربك. شكرًا لك 🎯</p>
   </div>
 
   <div class="card" id="bad" style="display:none;">
@@ -72,16 +103,39 @@ const SUPA_URL = 'https://vgvkbsnpdpgybtsfwted.supabase.co';
 const SUPA_KEY = 'sb_publishable_v3QgxU-WmX2vOPmIr1vJZw_qaGTHVvg';
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 const quizId = new URLSearchParams(location.search).get('quiz');
-let quiz = null, qs = [], i = 0, score = 0, t0 = 0, student = '';
+const QTIME = 20;
+let quiz = null, qs = [], i = 0, correct = 0, points = 0, streak = 0, bestStreak = 0, t0 = 0, student = '';
+let timeLeft = QTIME, timerId = null, answered = false;
+
+// ===== sound (Web Audio, unlocked on first tap) =====
+let AC = null, muted = false;
+function audio() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (AC && AC.state === 'suspended') AC.resume(); return AC; }
+function tone(freq, dur, type, vol, delay) {
+  if (muted) return; const ac = audio(); if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type || 'sine'; o.frequency.value = freq;
+  const t = ac.currentTime + (delay || 0);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol || 0.22, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(ac.destination);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+const sCorrect = () => { tone(659, .14, 'sine', .25); tone(880, .22, 'sine', .25, .11); };
+const sWrong = () => { tone(180, .25, 'sawtooth', .18); tone(140, .3, 'sawtooth', .15, .1); };
+const sTick = () => tone(1050, .05, 'square', .08);
+const sStreak = () => { tone(523, .12, 'sine', .22); tone(659, .12, 'sine', .22, .1); tone(784, .2, 'sine', .22, .2); };
+const sFinish = () => { [523, 659, 784, 1047].forEach((f, k) => tone(f, .18, 'triangle', .24, k * .14)); };
+function toggleMute() { muted = !muted; document.getElementById('mutebtn').textContent = muted ? '🔇' : '🔊'; }
 
 function shuffle(a) { a = a.slice(); for (let j = a.length - 1; j > 0; j--) { const k = Math.floor(Math.random() * (j + 1)); [a[j], a[k]] = [a[k], a[j]]; } return a; }
 async function load() {
-  if (!quizId) return document.getElementById('bad').style.display = '';
+  if (!quizId) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('bad').style.display = ''; }
   const rq = await supa.from('quizzes').select('*').eq('id', quizId).single();
   if (rq.error || !rq.data) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('bad').style.display = ''; }
   quiz = rq.data;
   document.getElementById('qtitle').textContent = quiz.title;
-  document.title = quiz.title;
+  document.title = quiz.title + ' — تحدي';
   const rs = await supa.from('questions').select('*').eq('quiz_id', quizId).order('ord');
   qs = shuffle(rs.data || []).map(q => {
     const order = shuffle(q.o.map((_, idx) => idx));
@@ -92,17 +146,38 @@ async function load() {
 function begin() {
   student = document.getElementById('sname').value.trim();
   if (!student) { const e = document.getElementById('nameErr'); e.textContent = 'اكتب اسمك أولًا.'; e.style.display = 'block'; return; }
+  audio(); // unlock sound on first tap
   t0 = Date.now();
   document.getElementById('nameCard').style.display = 'none';
   show('quiz'); render();
 }
-function show(id) { ['quiz','result'].forEach(x => document.getElementById(x).style.display = x === id ? '' : 'none'); }
+function show(id) { ['quiz', 'result'].forEach(x => document.getElementById(x).style.display = x === id ? '' : 'none'); }
+function hud() {
+  document.getElementById('scorepill').textContent = '⭐ ' + points;
+  const sp = document.getElementById('streakpill');
+  sp.textContent = '🔥 ×' + streak;
+  sp.classList.toggle('zero', streak < 2);
+}
+function startTimer() {
+  clearInterval(timerId);
+  timeLeft = QTIME;
+  const tp = document.getElementById('timerpill');
+  tp.textContent = timeLeft; tp.classList.remove('low');
+  timerId = setInterval(() => {
+    timeLeft--;
+    tp.textContent = Math.max(timeLeft, 0);
+    if (timeLeft <= 5) { tp.classList.add('low'); if (timeLeft > 0) sTick(); }
+    if (timeLeft <= 0) { clearInterval(timerId); timeout(); }
+  }, 1000);
+}
 function render() {
   const q = qs[i];
-  document.getElementById('counter').textContent = 'سؤال ' + (i+1) + ' من ' + qs.length;
-  document.getElementById('running').textContent = 'صحيحة حتى الآن: ' + score;
+  answered = false;
+  document.getElementById('counter').textContent = 'سؤال ' + (i + 1) + ' من ' + qs.length;
   document.getElementById('prog').style.width = (i / qs.length * 100) + '%';
   document.getElementById('qtext').textContent = q.q;
+  document.getElementById('gain').textContent = '';
+  hud();
   const box = document.getElementById('opts');
   box.innerHTML = '';
   q.o.forEach((t, idx) => {
@@ -114,37 +189,60 @@ function render() {
   const why = document.getElementById('why');
   why.className = 'why'; why.innerHTML = '';
   document.getElementById('nextbtn').className = 'next';
+  startTimer();
 }
-function answer(idx, btn) {
+function settle(idx, btn, timedOut) {
+  if (answered) return;
+  answered = true;
+  clearInterval(timerId);
   const q = qs[i];
   const opts = document.querySelectorAll('#opts .opt');
   opts.forEach(o => o.disabled = true);
   opts[q.a].classList.add('right');
   let head;
-  if (idx === q.a) { score++; head = '✅ إجابة صحيحة!'; }
-  else { btn.classList.add('wrong'); head = '❌ إجابة غير صحيحة. الصحيح: «' + q.o[q.a] + '»'; }
+  if (!timedOut && idx === q.a) {
+    correct++;
+    const gained = 100 + timeLeft * 5 + streak * 20;
+    points += gained;
+    streak++;
+    bestStreak = Math.max(bestStreak, streak);
+    document.getElementById('gain').textContent = '+' + gained;
+    head = '✅ إجابة صحيحة!';
+    if (streak >= 3) { head += ' سلسلة 🔥×' + streak; sStreak(); } else sCorrect();
+  } else {
+    if (!timedOut && btn) btn.classList.add('wrong');
+    streak = 0;
+    head = timedOut ? '⏰ انتهى الوقت! الصحيح: «' + q.o[q.a] + '»' : '❌ إجابة غير صحيحة. الصحيح: «' + q.o[q.a] + '»';
+    sWrong();
+  }
   const why = document.getElementById('why');
   why.innerHTML = '<b>' + head + '</b>' + (q.e ? '<br>' + q.e : '');
   why.classList.add('show');
-  document.getElementById('running').textContent = 'صحيحة حتى الآن: ' + score;
+  hud();
   const nb = document.getElementById('nextbtn');
-  nb.textContent = (i + 1 < qs.length) ? 'السؤال التالي' : 'عرض النتيجة';
+  nb.textContent = (i + 1 < qs.length) ? 'السؤال التالي' : 'عرض النتيجة 🏁';
   nb.classList.add('show');
 }
+function answer(idx, btn) { settle(idx, btn, false); }
+function timeout() { settle(-1, null, true); }
 async function next() {
   if (i + 1 < qs.length) { i++; render(); return; }
   document.getElementById('prog').style.width = '100%';
   const seconds = Math.round((Date.now() - t0) / 1000);
-  document.getElementById('scorenum').textContent = score + ' من ' + qs.length;
-  const p = score / qs.length;
+  document.getElementById('scorenum').textContent = points;
+  document.getElementById('rcorrect').textContent = correct + '/' + qs.length;
+  document.getElementById('rbest').textContent = '×' + bestStreak;
+  document.getElementById('rtime').textContent = seconds + ' ث';
+  const p = correct / qs.length;
   let m;
-  if (p >= .9) m = 'ممتاز! 🌟';
-  else if (p >= .7) m = 'جيد جدًا 💪';
+  if (p >= .9) m = 'أسطوري! 🏆';
+  else if (p >= .7) m = 'أداء قوي 💪';
   else if (p >= .5) m = 'أساس كويس — راجع الشروحات 📚';
   else m = 'حاول مرة أخرى بعد المراجعة 🔁';
   document.getElementById('scoremsg').textContent = m;
   show('result');
-  await supa.from('attempts').insert({ quiz_id: quizId, student_name: student, score, total: qs.length, seconds });
+  sFinish();
+  await supa.from('attempts').insert({ quiz_id: quizId, student_name: student, score: correct, total: qs.length, seconds });
 }
 load();
 </script>
