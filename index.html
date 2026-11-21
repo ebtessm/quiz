@@ -50,6 +50,25 @@
   .ghost { display:block; width:100%; background:#fff; color:var(--green); border:2px solid var(--green); border-radius:12px; padding:13px; font-size:16px; cursor:pointer; margin-top:10px; }
   footer { text-align:center; color:#8a9a90; font-size:13px; margin-top:30px; }
   a.brand { color:var(--green); }
+
+  .add-cat { display:block; width:100%; background:#fff; color:var(--green); border:2px dashed var(--green2); border-radius:14px; padding:18px; margin-top:14px; cursor:pointer; font-size:17px; font-weight:bold; font-family:inherit; }
+  .add-cat:hover { background:#eef7f1; }
+  .add-cat small { display:block; font-weight:normal; color:#5a6b60; margin-top:6px; font-size:13px; }
+  .cat-tools { display:flex; gap:8px; margin:6px 0 4px; }
+  .cat-tools button { flex:1; background:#fff; border:2px solid #dce9e0; color:var(--green); border-radius:10px; padding:7px; font-size:13px; font-weight:bold; cursor:pointer; font-family:inherit; }
+  .cat-tools button:hover { border-color:var(--green2); background:#eef7f1; }
+  .qrow { border:2px solid #e4efe8; border-radius:14px; padding:14px; margin-top:12px; background:var(--bg); }
+  .qrow h4 { color:var(--green); margin-bottom:6px; font-size:15px; }
+  .qrow label { display:block; font-size:12px; color:#5a6b60; margin:8px 0 4px; font-weight:bold; }
+  .qrow input[type=text] { width:100%; padding:10px 12px; border:2px solid #dce9e0; border-radius:10px; font-size:14px; font-family:inherit; background:#fff; }
+  .qrow input[type=text]:focus { outline:none; border-color:var(--green2); }
+  .opt-line { display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .opt-line input[type=radio] { width:18px; height:18px; accent-color:var(--green); flex:none; }
+  .fld-label { display:block; font-size:13px; color:#5a6b60; margin:12px 0 5px; font-weight:bold; }
+  .fld { width:100%; padding:12px 14px; border:2px solid #dce9e0; border-radius:12px; font-size:15px; font-family:inherit; background:#fff; }
+  .fld:focus { outline:none; border-color:var(--green2); }
+  .msg { display:none; border-radius:10px; padding:10px 14px; margin-top:10px; font-size:14px; }
+  .msg.err { display:block; background:#fbeaea; color:var(--red); }
 </style>
 </head>
 <body>
@@ -67,6 +86,21 @@
     <button class="sec-btn" onclick="start('english')">🇬🇧 لغة إنجليزية<small>قواعد ومفردات أساسية — 10 أسئلة في الجولة</small></button>
     <button class="sec-btn" onclick="start('general')">🌍 اختبارات عامة<small>ثقافة عامة: جغرافيا وعلوم وتاريخ ورياضة — 10 أسئلة في الجولة</small></button>
     <button class="sec-btn" onclick="start('behavioral')">💼 انترفيوهات ومهارات سلوكية<small>مواقف العمل والمقابلات الشخصية والتواصل — 10 أسئلة في الجولة</small></button>
+    <div id="customCats"></div>
+    <button class="add-cat" onclick="openEditor()">➕ أضف قسمك الخاص<small>سمِّ قسمك وزوّد أسئلته بنفسك — بيتحفظ على جهازك</small></button>
+
+  </div>
+
+
+  <div class="card" id="editor" style="display:none;">
+    <div style="font-size:17px;font-weight:bold;color:var(--green)">قسمك الخاص 📝</div>
+    <label class="fld-label">اسم القسم</label>
+    <input type="text" class="fld" id="catName" placeholder="مثال: مراجعة علوم الصف الثالث">
+    <div id="cqlist"></div>
+    <button class="ghost" onclick="addCQ()">+ إضافة سؤال</button>
+    <button class="again" onclick="saveCat()">حفظ القسم ✅</button>
+    <div class="msg" id="edMsg"></div>
+    <button class="ghost" onclick="show('home')">رجوع بدون حفظ</button>
   </div>
 
   <div class="card" id="quiz" style="display:none;">
@@ -148,14 +182,15 @@ function shuffle(a) { a = a.slice(); for (let j = a.length - 1; j > 0; j--) { co
 function start(sec) {
   cur = sec;
   audio(); // unlock sound on first tap
-  bank = shuffle(BANKS[sec]).slice(0, N).map(q => {
+  const src = sec.indexOf('c:') === 0 ? ((loadCats()[sec.slice(2)] || { questions: [] }).questions) : BANKS[sec];
+  bank = shuffle(src).slice(0, N).map(q => {
     const order = shuffle(q.o.map((_, idx) => idx));
     return { ...q, o: order.map(idx => q.o[idx]), a: order.indexOf(q.a) };
   });
   qs = bank; i = 0; correct = 0; points = 0; streak = 0; bestStreak = 0; t0 = Date.now();
   show('quiz'); render();
 }
-function show(id) { ['home', 'quiz', 'result'].forEach(x => document.getElementById(x).style.display = x === id ? '' : 'none'); }
+function show(id) { ['home', 'quiz', 'result', 'editor'].forEach(x => document.getElementById(x).style.display = x === id ? '' : 'none'); }
 function hud() {
   document.getElementById('scorepill').textContent = '⭐ ' + points;
   const sp = document.getElementById('streakpill');
@@ -250,6 +285,103 @@ function next() {
   sFinish();
 }
 function restart(same) { if (same) start(cur); else show('home'); }
+
+// ===== الأقسام المخصصة (تتحفظ محليًا على الجهاز) =====
+const CKEY = 'tahaddy_custom_cats_v1';
+let editKey = null, cqCount = 0;
+function loadCats() { try { return JSON.parse(localStorage.getItem(CKEY)) || {}; } catch (e) { return {}; } }
+function saveCats(c) { try { localStorage.setItem(CKEY, JSON.stringify(c)); } catch (e) {} }
+function renderCats() {
+  const cats = loadCats();
+  const box = document.getElementById('customCats');
+  box.innerHTML = '';
+  Object.keys(cats).forEach(k => {
+    const c = cats[k];
+    const wrap = document.createElement('div');
+    const b = document.createElement('button');
+    b.className = 'sec-btn';
+    const t = document.createElement('span'); t.textContent = '📝 ' + c.name;
+    const sm = document.createElement('small'); sm.textContent = 'قسمك الخاص — ' + c.questions.length + ' سؤال';
+    b.appendChild(t); b.appendChild(sm);
+    b.onclick = () => start('c:' + k);
+    const tools = document.createElement('div');
+    tools.className = 'cat-tools';
+    const ed = document.createElement('button'); ed.textContent = '✏️ تعديل / إعادة تسمية'; ed.onclick = () => openEditor(k);
+    const del = document.createElement('button'); del.textContent = '🗑 حذف'; del.onclick = () => delCat(k);
+    tools.appendChild(ed); tools.appendChild(del);
+    wrap.appendChild(b); wrap.appendChild(tools);
+    box.appendChild(wrap);
+  });
+}
+function openEditor(k) {
+  editKey = k || null; cqCount = 0;
+  document.getElementById('cqlist').innerHTML = '';
+  document.getElementById('catName').value = '';
+  const m = document.getElementById('edMsg'); m.className = 'msg'; m.textContent = '';
+  if (k) {
+    const c = loadCats()[k];
+    if (!c) return;
+    document.getElementById('catName').value = c.name;
+    c.questions.forEach(q => addCQ(q));
+  }
+  if (cqCount === 0) addCQ();
+  show('editor');
+}
+function addCQ(q) {
+  cqCount++;
+  const n = cqCount;
+  const div = document.createElement('div');
+  div.className = 'qrow'; div.id = 'cq' + n;
+  div.innerHTML = '<h4>سؤال <button type="button" style="float:left;background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;font-family:inherit;" onclick="this.parentNode.parentNode.remove()">حذف السؤال</button></h4>'
+    + '<label>نص السؤال</label><input type="text" class="cq" placeholder="اكتب السؤال">'
+    + '<label>الاختيارات الأربعة (حدد الصحيحة بعلامة الدائرة)</label>'
+    + [0, 1, 2, 3].map(x => '<div class="opt-line"><input type="radio" name="cc' + n + '" value="' + x + '"' + (x === 0 ? ' checked' : '') + '><input type="text" class="co" placeholder="اختيار ' + (x + 1) + '"></div>').join('')
+    + '<label>شرح الإجابة (اختياري)</label><input type="text" class="ce" placeholder="لماذا هذه هي الإجابة الصحيحة؟">';
+  document.getElementById('cqlist').appendChild(div);
+  if (q) {
+    div.querySelector('.cq').value = q.q;
+    const os = div.querySelectorAll('.co');
+    q.o.forEach((t, x) => { if (os[x]) os[x].value = t; });
+    const r = div.querySelector('input[name="cc' + n + '"][value="' + q.a + '"]');
+    if (r) r.checked = true;
+    div.querySelector('.ce').value = q.e || '';
+  }
+}
+function saveCat() {
+  const name = document.getElementById('catName').value.trim();
+  const msg = document.getElementById('edMsg');
+  const bad = t => { msg.className = 'msg err'; msg.textContent = t; };
+  if (!name) return bad('اكتب اسم القسم أولًا.');
+  const rows = [];
+  const boxes = document.querySelectorAll('#cqlist .qrow');
+  for (const box of boxes) {
+    const q = box.querySelector('.cq').value.trim();
+    if (!q) continue;
+    const o = [...box.querySelectorAll('.co')].map(x => x.value.trim());
+    const r = box.querySelector('input[type=radio]:checked');
+    const a = r ? parseInt(r.value) : 0;
+    const e = box.querySelector('.ce').value.trim();
+    if (o.some(x => !x)) return bad('أكمل الاختيارات الأربعة للسؤال: «' + q.slice(0, 40) + '»');
+    rows.push({ q, o, a, e });
+  }
+  if (!rows.length) return bad('أضف سؤالًا واحدًا على الأقل باختياراته الأربعة.');
+  const cats = loadCats();
+  const k = editKey || ('k' + Date.now());
+  cats[k] = { name, questions: rows };
+  saveCats(cats);
+  renderCats();
+  show('home');
+}
+function delCat(k) {
+  const cats = loadCats();
+  const c = cats[k];
+  if (!c) return;
+  if (!confirm('حذف قسم «' + c.name + '» نهائيًا؟')) return;
+  delete cats[k];
+  saveCats(cats);
+  renderCats();
+}
+renderCats();
 </script>
 </body>
 </html>
