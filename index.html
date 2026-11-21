@@ -48,6 +48,19 @@
   .score-sub { text-align:center; color:#5a6b60; margin:12px 0 4px; font-size:16px; }
   .again { display:block; width:100%; background:var(--green); color:#fff; border:0; border-radius:12px; padding:15px; font-size:17px; font-weight:bold; cursor:pointer; margin-top:10px; }
   .ghost { display:block; width:100%; background:#fff; color:var(--green); border:2px solid var(--green); border-radius:12px; padding:13px; font-size:16px; cursor:pointer; margin-top:10px; }
+
+  .fb-card h3 { margin:0 0 4px; color:var(--green); }
+  .fb-sub { color:#5a6b60; font-size:14px; margin:0 0 12px; }
+  .fb-stars { display:flex; gap:6px; justify-content:center; margin-bottom:12px; direction:ltr; }
+  .fb-stars button { background:none; border:0; font-size:26px; cursor:pointer; color:#d5e0d8; padding:2px; }
+  .fb-stars button.on { color:#f5b301; }
+  .fb-card textarea, .fb-card input.fb-contact { width:100%; padding:11px 13px; border:2px solid #dce9e0; border-radius:12px; font-size:15px; font-family:inherit; background:var(--bg); margin-top:8px; resize:vertical; }
+  .fb-card textarea { min-height:64px; }
+  .fb-consent { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:14px; color:#40514a; cursor:pointer; }
+  .fb-consent input { width:18px; height:18px; accent-color:var(--green); }
+  .fb-send { width:100%; margin-top:14px; background:var(--green); color:#fff; border:0; border-radius:12px; padding:14px; font-size:16px; font-weight:bold; cursor:pointer; font-family:inherit; }
+  .fb-send:disabled { opacity:.6; cursor:default; }
+  .fb-msg { text-align:center; margin-top:10px; font-size:15px; color:var(--green); min-height:20px; }
   footer { text-align:center; color:#8a9a90; font-size:13px; margin-top:30px; }
   a.brand { color:var(--green); }
 
@@ -129,6 +142,20 @@
     <div class="score-sub" id="scoremsg"></div>
     <button class="again" onclick="restart(true)">🔁 جولة جديدة في نفس القسم</button>
     <button class="ghost" onclick="restart(false)">اختيار قسم آخر</button>
+  </div>
+
+  <div class="card fb-card" id="feedbackCard" style="margin-top:18px;">
+    <h3>رأيك في تحدي يهمنا 💬</h3>
+    <p class="fb-sub">شاركنا تجربتك، وكل البيانات اختيارية. الردود وبيانات التواصل مش بتظهر للزوار.</p>
+    <div class="fb-stars" id="fbStars"></div>
+    <textarea id="fbLiked" maxlength="2000" placeholder="إيه اللي عجبك؟ (اختياري)"></textarea>
+    <textarea id="fbImprove" maxlength="2000" placeholder="إيه اقتراحك للتطوير؟ (اختياري)"></textarea>
+    <input type="email" id="fbEmail" class="fb-contact" maxlength="254" placeholder="إيميلك (اختياري)" style="direction:rtl">
+    <input type="tel" id="fbPhone" class="fb-contact" maxlength="40" placeholder="رقم تليفونك (اختياري)" style="direction:rtl">
+    <label class="fb-consent"><input type="checkbox" id="fbReply"> أوافق تتواصلوا معايا بخصوص رأيي</label>
+    <label class="fb-consent"><input type="checkbox" id="fbNews"> أحب توصلني أخبار تحدي على الإيميل</label>
+    <button class="fb-send" id="fbSend" onclick="submitFeedback()">ابعت رأيك</button>
+    <div class="fb-msg" id="fbMsg"></div>
   </div>
   <footer>تحدي 🎯 · Quizora — اتعلم وانت بتلعب<br><span dir="ltr">Powered by Ebtessam Desouky</span></footer>
 </div>
@@ -382,6 +409,55 @@ function delCat(k) {
   renderCats();
 }
 renderCats();
+
+// ===== feedback card =====
+const SUPA_URL = 'https://vgvkbsnpdpgybtsfwted.supabase.co';
+const SUPA_KEY = 'sb_publishable_v3QgxU-WmX2vOPmIr1vJZw_qaGTHVvg';
+let fbRating = 0;
+(function initStars(){
+  const box = document.getElementById('fbStars');
+  for (let n = 5; n >= 1; n--) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = '\u2605'; b.dataset.n = n;
+    b.onclick = () => { fbRating = n; [...box.children].forEach(c => c.classList.toggle('on', +c.dataset.n <= n)); };
+    box.appendChild(b);
+  }
+})();
+const FB_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+async function submitFeedback() {
+  const msg = document.getElementById('fbMsg');
+  const btn = document.getElementById('fbSend');
+  const liked = document.getElementById('fbLiked').value.trim();
+  const improve = document.getElementById('fbImprove').value.trim();
+  const email = document.getElementById('fbEmail').value.trim();
+  const phone = document.getElementById('fbPhone').value.trim();
+  const consentReply = document.getElementById('fbReply').checked;
+  const consentNews = document.getElementById('fbNews').checked;
+  msg.style.color = 'var(--green)';
+  if (!fbRating && !liked && !improve) { msg.textContent = 'قولنا أي حاجة الأول — حتى نجمة واحدة 🙂'; return; }
+  if (email && !FB_EMAIL_RE.test(email)) { msg.textContent = 'الإيميل مش واضح — راجعه من فضلك'; return; }
+  if (consentNews && !FB_EMAIL_RE.test(email)) { msg.textContent = 'اشتراك الأخبار محتاج إيميل صحيح'; return; }
+  if (consentReply && !email && !phone) { msg.textContent = 'سيب إيميلك أو رقمك علشان نقدر نتواصل'; return; }
+  btn.disabled = true; msg.textContent = 'جاري الإرسال…';
+  try {
+    const resp = await fetch(SUPA_URL + '/rest/v1/feedback', {
+      method: 'POST',
+      headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ rating: fbRating || null, liked, improve, email: email || null, phone: phone || null, consent_reply: consentReply, consent_news: consentNews })
+    });
+    if (!resp.ok) throw new Error('save failed ' + resp.status);
+    msg.textContent = 'وصل رأيك ✅ شكرًا لك';
+    document.getElementById('fbLiked').value = ''; document.getElementById('fbImprove').value = '';
+    document.getElementById('fbEmail').value = ''; document.getElementById('fbPhone').value = '';
+    document.getElementById('fbReply').checked = false; document.getElementById('fbNews').checked = false;
+    fbRating = 0;
+    [...document.getElementById('fbStars').children].forEach(c => c.classList.remove('on'));
+  } catch (e) {
+    msg.style.color = '#b3392b';
+    msg.textContent = 'حصلت مشكلة في الإرسال — رأيك ماتسجلش، جرب تاني';
+  }
+  btn.disabled = false;
+}
 </script>
 </body>
 </html>
