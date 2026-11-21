@@ -71,7 +71,7 @@
     <div class="hud">
       <span class="pill" id="scorepill">⭐ 0</span>
       <span class="pill streak zero" id="streakpill">🔥 ×0</span>
-      <span class="pill timer" id="timerpill">20</span>
+      <span class="pill timer" id="timerpill">الوقت: ٢٠ ثانية</span>
     </div>
     <div class="meta" style="display:flex;justify-content:space-between;color:#5a6b60;font-size:13px;margin-bottom:10px;"><span id="counter"></span></div>
     <div class="bar"><div id="prog"></div></div>
@@ -182,10 +182,10 @@ function startTimer() {
   clearInterval(timerId);
   timeLeft = QTIME;
   const tp = document.getElementById('timerpill');
-  tp.textContent = timeLeft; tp.classList.remove('low');
+  tp.textContent = 'الوقت: ' + timeLeft.toLocaleString('ar-EG') + ' ثانية'; tp.classList.remove('low');
   timerId = setInterval(() => {
     timeLeft--;
-    tp.textContent = Math.max(timeLeft, 0);
+    tp.textContent = 'الوقت: ' + Math.max(timeLeft, 0).toLocaleString('ar-EG') + ' ثانية';
     if (timeLeft <= 5) { tp.classList.add('low'); if (timeLeft > 0) sTick(); }
     if (timeLeft <= 0) { clearInterval(timerId); timeout(); }
   }, 1000);
