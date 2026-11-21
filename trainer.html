@@ -3,24 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>لوحة المدرب — أنشئ اختبارك</title>
+<title>تحدي — لوحة المدرب</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <style>
   :root { --green:#0b5830; --green2:#107c41; --bg:#f6fbf8; --cream:#f5f0e1; --red:#c81e1e; --ink:#1c2b23; }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'Segoe UI', Tahoma, Arial, sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
   .wrap { max-width:820px; margin:0 auto; padding:24px 16px 60px; }
   header { text-align:center; padding:22px 0 8px; }
-  header .logo { display:inline-block; background:var(--green); color:var(--cream); padding:8px 22px; border-radius:40px; font-weight:bold; font-size:20px; }
+  header .logo { display:inline-block; background:var(--green); color:var(--cream); padding:8px 26px; border-radius:40px; font-weight:bold; font-size:24px; }
   header p { color:#5a6b60; margin-top:10px; font-size:15px; }
   .card { background:#fff; border-radius:18px; box-shadow:0 4px 18px rgba(11,88,48,.08); padding:26px 22px; margin-top:20px; }
-  input[type=text], input[type=email], input[type=password], textarea { width:100%; padding:12px 14px; border:2px solid #dce9e0; border-radius:12px; font-size:15px; font-family:inherit; background:var(--bg); }
+  input[type=text], input[type=email], input[type=password], input[type=number], textarea { width:100%; padding:12px 14px; border:2px solid #dce9e0; border-radius:12px; font-size:15px; font-family:inherit; background:var(--bg); }
   input:focus, textarea:focus { outline:none; border-color:var(--green2); }
   label { display:block; font-size:13px; color:#5a6b60; margin:12px 0 5px; font-weight:bold; }
   .btn { display:block; width:100%; background:var(--green); color:#fff; border:0; border-radius:12px; padding:14px; font-size:16px; font-weight:bold; cursor:pointer; margin-top:14px; }
   .btn2 { display:block; width:100%; background:#fff; color:var(--green); border:2px solid var(--green); border-radius:12px; padding:12px; font-size:15px; cursor:pointer; margin-top:10px; }
   .qrow { border:2px solid #e4efe8; border-radius:14px; padding:16px; margin-top:14px; background:var(--bg); }
-  .qrow h4 { color:var(--green); margin-bottom:8px; }
+  .qrow h4 { color:var(--green); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+  .qrow h4 .del { color:var(--red); cursor:pointer; font-size:13px; border:0; background:none; }
+  .qtype { display:inline-block; background:#eef7f1; color:var(--green); border-radius:20px; padding:2px 10px; font-size:11px; margin-right:8px; }
   .opt-line { display:flex; align-items:center; gap:8px; margin-top:8px; }
   .opt-line input[type=text] { flex:1; }
   .opt-line input[type=radio] { width:20px; height:20px; accent-color:var(--green); }
@@ -37,13 +41,19 @@
   .tabs button { flex:1; padding:10px; border:2px solid #dce9e0; background:#fff; border-radius:10px; cursor:pointer; font-size:15px; font-weight:bold; color:#5a6b60; }
   .tabs button.active { border-color:var(--green); color:var(--green); background:#eef7f1; }
   a.brand { color:var(--green); font-size:13px; }
+  .drop { border:2px dashed var(--green2); border-radius:14px; padding:26px 16px; text-align:center; background:#eef7f1; cursor:pointer; margin-top:12px; }
+  .drop:hover { background:#e2f1e8; }
+  .drop b { color:var(--green); display:block; font-size:16px; }
+  .spin { display:none; text-align:center; color:var(--green); font-weight:bold; margin-top:14px; }
+  .spin.show { display:block; animation:p 1.2s infinite; }
+  @keyframes p { 50% { opacity:.4; } }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <span class="logo">لوحة المدرب</span>
-    <p>أنشئ اختبارك الخاص وشاركه مع طلابك وتابع نتائجهم — <a class="brand" href="index.html">العودة للاختبارات العامة</a></p>
+    <span class="logo">تحدي 🎯 — لوحة المدرب</span>
+    <p>ارفع ملف المنهج واحصل على بنك أسئلة تلقائيًا، وشارك اللعبة مع طلابك — <a class="brand" href="index.html">العودة للاختبارات العامة</a></p>
   </header>
 
   <div class="card" id="auth">
@@ -63,8 +73,29 @@
     <h3 style="color:var(--green)">إنشاء اختبار جديد</h3>
     <label>عنوان الاختبار</label>
     <input type="text" id="quizTitle" placeholder="مثال: مراجعة الوحدة الثالثة">
+
+    <div class="tabs" style="margin-top:16px;">
+      <button id="tabFile" class="active" onclick="setBuild('file')">📄 توليد من ملف</button>
+      <button id="tabManual" onclick="setBuild('manual')">✍️ كتابة يدوية</button>
+    </div>
+
+    <div id="fileMode">
+      <div class="drop" onclick="document.getElementById('fileInput').click()">
+        <b>ارفع ملف المحتوى العلمي</b>
+        <span class="muted">PDF أو Word (DOCX) أو نص TXT — حتى 10 ميجا. يُستخدم أول 30 ألف حرف من المحتوى.</span>
+        <div class="muted" id="fileName" style="margin-top:8px;color:var(--green);font-weight:bold;"></div>
+      </div>
+      <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="filePicked(this)">
+      <label>عدد الأسئلة المطلوب</label>
+      <input type="number" id="qWant" value="10" min="3" max="30">
+      <button class="btn2" id="genBtn" onclick="generate()">⚡ ولّد الأسئلة تلقائيًا</button>
+      <div class="spin" id="genSpin">⏳ بنقرأ الملف وبنولّد الأسئلة... ممكن ياخد حتى دقيقة</div>
+      <div class="err" id="genErr"></div>
+      <p class="muted" style="margin-top:10px;">التوليد بيغطي كل أنواع الأسئلة اللي المحتوى يسمح بيها: اختيار من متعدد، صح/خطأ، أكمل، ترتيب، توصيل. راجع الأسئلة تحت وعدّل أو امسح اللي مش عاجبك قبل الحفظ.</p>
+    </div>
+
     <div id="qlist"></div>
-    <button class="btn2" onclick="addQuestion()">+ إضافة سؤال</button>
+    <button class="btn2" onclick="addQuestion()">+ إضافة سؤال يدويًا</button>
     <button class="btn" onclick="saveQuiz()">حفظ الاختبار والحصول على الرابط</button>
     <div class="err" id="buildErr"></div>
     <div class="ok" id="buildOk"></div>
@@ -85,14 +116,25 @@
 <script>
 const SUPA_URL = 'https://vgvkbsnpdpgybtsfwted.supabase.co';
 const SUPA_KEY = 'sb_publishable_v3QgxU-WmX2vOPmIr1vJZw_qaGTHVvg';
+const GENQ_URL = SUPA_URL + '/functions/v1/genq';
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
-let mode = 'login', user = null, qCount = 0;
+let mode = 'login', user = null, qCount = 0, buildMode = 'file', fileText = '';
+
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const TYPE_NAMES = { mcq: 'اختيار من متعدد', tf: 'صح/خطأ', fill: 'أكمل', order: 'ترتيب', match: 'توصيل' };
 
 function setMode(m) {
   mode = m;
   document.getElementById('tabLogin').classList.toggle('active', m === 'login');
   document.getElementById('tabSignup').classList.toggle('active', m === 'signup');
   document.getElementById('authBtn').textContent = m === 'login' ? 'دخول' : 'إنشاء الحساب';
+}
+function setBuild(m) {
+  buildMode = m;
+  document.getElementById('tabFile').classList.toggle('active', m === 'file');
+  document.getElementById('tabManual').classList.toggle('active', m === 'manual');
+  document.getElementById('fileMode').style.display = m === 'file' ? '' : 'none';
 }
 function showErr(id, msg) { const e = document.getElementById(id); e.textContent = msg; e.style.display = 'block'; }
 async function doAuth() {
@@ -114,36 +156,102 @@ function enter(u) {
   document.getElementById('builder').style.display = '';
   document.getElementById('dash').style.display = '';
   document.getElementById('signoutBox').style.display = '';
-  if (qCount === 0) addQuestion();
+  setBuild('file');
   loadDashboard();
 }
 async function signOut() { await supa.auth.signOut(); location.reload(); }
 
-function addQuestion() {
+async function filePicked(inp) {
+  const f = inp.files[0];
+  if (!f) return;
+  const err = document.getElementById('genErr'); err.style.display = 'none';
+  document.getElementById('fileName').textContent = '⏳ بنقرأ: ' + f.name;
+  try {
+    if (f.size > 10 * 1024 * 1024) throw new Error('الملف أكبر من 10 ميجا.');
+    const buf = await f.arrayBuffer();
+    const ext = (f.name.split('.').pop() || '').toLowerCase();
+    if (ext === 'pdf') {
+      const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+      let t = '';
+      for (let p = 1; p <= doc.numPages; p++) {
+        const pg = await doc.getPage(p);
+        const tc = await pg.getTextContent();
+        t += tc.items.map(it => it.str).join(' ') + '\n';
+      }
+      fileText = t;
+    } else if (ext === 'docx') {
+      const r = await mammoth.extractRawText({ arrayBuffer: buf });
+      fileText = r.value;
+    } else {
+      fileText = await f.text();
+    }
+    fileText = (fileText || '').trim();
+    if (fileText.length < 100) throw new Error('مقدرناش نستخرج نص كافٍ من الملف — لو الـPDF صور ممسوحة ضوئيًا، استخدم ملف Word أو نص.');
+    document.getElementById('fileName').textContent = '✅ ' + f.name + ' — اتقرأ ' + fileText.length + ' حرف';
+  } catch (e) {
+    fileText = '';
+    document.getElementById('fileName').textContent = '';
+    showErr('genErr', e.message || 'تعذر قراءة الملف.');
+  }
+}
+async function generate() {
+  const err = document.getElementById('genErr'); err.style.display = 'none';
+  if (!fileText) return showErr('genErr', 'ارفع ملفًا صالحًا أولًا واستنى قراءته.');
+  const n = Math.min(Math.max(parseInt(document.getElementById('qWant').value) || 10, 3), 30);
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true;
+  document.getElementById('genSpin').classList.add('show');
+  try {
+    const r = await fetch(GENQ_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
+      body: JSON.stringify({ text: fileText, count: n }),
+    });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error || 'تعذر التوليد.');
+    j.questions.forEach(q => addQuestion(q));
+    document.getElementById('fileName').textContent += ' — اتولّد ' + j.questions.length + ' سؤال ✅ راجعهم تحت';
+  } catch (e) {
+    showErr('genErr', e.message || 'خطأ مؤقت — حاول مرة أخرى.');
+  }
+  btn.disabled = false;
+  document.getElementById('genSpin').classList.remove('show');
+}
+function addQuestion(gen) {
   qCount++;
   const n = qCount;
   const div = document.createElement('div');
   div.className = 'qrow'; div.id = 'q' + n;
-  div.innerHTML = '<h4>سؤال ' + n + '</h4>'
+  const opts = gen ? gen.o : ['', '', '', ''];
+  const ansr = gen ? gen.a : 0;
+  div.innerHTML = '<h4>سؤال ' + n + (gen && gen.type ? '<span class="qtype">' + (TYPE_NAMES[gen.type] || '') + '</span>' : '') + '<button class="del" onclick="document.getElementById(\'q' + n + '\').remove()">مسح ✕</button></h4>'
     + '<label>نص السؤال</label><input type="text" class="qq" placeholder="اكتب السؤال">'
-    + '<label>الاختيارات (حدد الصحيحة بعلامة الدائرة)</label>'
-    + [0,1,2,3].map(i => '<div class="opt-line"><input type="radio" name="c' + n + '" value="' + i + '"' + (i===0?' checked':'') + '><input type="text" class="qo" placeholder="اختيار ' + (i+1) + '"></div>').join('')
+    + '<label>الاختيارات (حدد الصحيحة بعلامة الدائرة — اختيارين على الأقل)</label>'
+    + [0, 1, 2, 3].map(i => '<div class="opt-line"><input type="radio" name="c' + n + '" value="' + i + '"' + (i === ansr ? ' checked' : '') + '><input type="text" class="qo" placeholder="اختيار ' + (i + 1) + '"' + (opts[i] !== undefined ? '' : ' style="display:none"') + '></div>').join('')
     + '<label>شرح الإجابة</label><input type="text" class="qe" placeholder="لماذا هذه هي الإجابة الصحيحة؟">';
   document.getElementById('qlist').appendChild(div);
+  div.querySelector('.qq').value = gen ? gen.q : '';
+  [...div.querySelectorAll('.qo')].forEach((x, i) => x.value = opts[i] || '');
+  div.querySelector('.qe').value = gen ? (gen.e || '') : '';
+  div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 async function saveQuiz() {
   const title = document.getElementById('quizTitle').value.trim();
   if (!title) return showErr('buildErr', 'اكتب عنوان الاختبار أولًا.');
   const rows = [];
+  let ord = 0;
   for (let i = 1; i <= qCount; i++) {
     const box = document.getElementById('q' + i);
     if (!box) continue;
     const q = box.querySelector('.qq').value.trim();
-    const o = [...box.querySelectorAll('.qo')].map(x => x.value.trim());
-    const a = parseInt(box.querySelector('input[name=c' + i + ']:checked').value);
+    const oAll = [...box.querySelectorAll('.qo')].map(x => x.value.trim());
+    let a = parseInt(box.querySelector('input[name=c' + i + ']:checked').value);
     const e = box.querySelector('.qe').value.trim();
-    if (!q || o.some(x => !x)) return showErr('buildErr', 'أكمل نص السؤال والاختيارات الأربعة في السؤال ' + i + '.');
-    rows.push({ ord: i, q, o, a, e });
+    const o = oAll.filter(x => x);
+    if (!q || o.length < 2) return showErr('buildErr', 'أكمل نص السؤال واختيارين على الأقل في سؤال من الأسئلة الظاهرة.');
+    if (!oAll[a]) { a = o.indexOf(oAll.find(x => x)) >= 0 ? 0 : 0; }
+    else { const kept = oAll[a]; a = o.indexOf(kept); }
+    rows.push({ ord: ++ord, q, o, a, e });
   }
   if (!rows.length) return showErr('buildErr', 'أضف سؤالًا واحدًا على الأقل.');
   document.getElementById('buildErr').style.display = 'none';
@@ -178,9 +286,18 @@ async function loadAttempts(q) {
   let html = '<h4 style="margin-top:16px;color:var(--green)">نتائج: ' + q.title + '</h4><div class="linkbox">' + link + '</div>';
   if (!r.data || !r.data.length) html += '<p class="muted" style="margin-top:8px;">لم يحل أي طالب بعد.</p>';
   else {
-    html += '<table><tr><th>الطالب</th><th>النتيجة</th><th>الوقت</th><th>التاريخ</th></tr>';
-    r.data.forEach(a => {
-      html += '<tr><td>' + a.student_name + '</td><td><b>' + a.score + ' من ' + a.total + '</b></td><td>' + (a.seconds ? a.seconds + ' ث' : '—') + '</td><td>' + new Date(a.created_at).toLocaleString('ar-EG') + '</td></tr>';
+    const atts = r.data;
+    const byScore = atts.slice().sort((x, y) => (y.score / y.total) - (x.score / x.total) || (x.seconds || 9999) - (y.seconds || 9999));
+    const fastest = atts.slice().sort((x, y) => (x.seconds || 9999) - (y.seconds || 9999))[0];
+    const top = byScore[0];
+    html += '<div style="display:flex;gap:10px;margin-top:14px;">'
+      + '<div style="flex:1;background:#fff8e8;border:2px solid #e8d9a8;border-radius:12px;padding:12px;text-align:center;"><div style="font-size:24px;">🏆</div><b>' + top.student_name + '</b><div class="muted">أعلى درجة: ' + top.score + ' من ' + top.total + '</div></div>'
+      + '<div style="flex:1;background:#eef7f1;border:2px solid #c9e3d2;border-radius:12px;padding:12px;text-align:center;"><div style="font-size:24px;">⚡</div><b>' + fastest.student_name + '</b><div class="muted">أسرع إنهاء: ' + (fastest.seconds ? fastest.seconds + ' ث' : '—') + '</div></div>'
+      + '</div>';
+    html += '<h4 style="margin-top:16px;color:var(--green)">لوحة الشرف 🥇</h4><table><tr><th>#</th><th>الطالب</th><th>النتيجة</th><th>الوقت</th><th>التاريخ</th></tr>';
+    const medals = ['🥇', '🥈', '🥉'];
+    byScore.forEach((a, idx) => {
+      html += '<tr><td>' + (medals[idx] || (idx + 1)) + '</td><td>' + a.student_name + '</td><td><b>' + a.score + ' من ' + a.total + '</b></td><td>' + (a.seconds ? a.seconds + ' ث' : '—') + '</td><td>' + new Date(a.created_at).toLocaleString('ar-EG') + '</td></tr>';
     });
     html += '</table>';
   }
