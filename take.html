@@ -1,1 +1,152 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الاختبار</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root { --green:#0b5830; --green2:#107c41; --bg:#f6fbf8; --cream:#f5f0e1; --red:#c81e1e; --ink:#1c2b23; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Segoe UI', Tahoma, Arial, sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+  .wrap { max-width:720px; margin:0 auto; padding:24px 16px 60px; }
+  header { text-align:center; padding:22px 0 8px; }
+  header .logo { display:inline-block; background:var(--green); color:var(--cream); padding:8px 22px; border-radius:40px; font-weight:bold; font-size:20px; }
+  .card { background:#fff; border-radius:18px; box-shadow:0 4px 18px rgba(11,88,48,.08); padding:26px 22px; margin-top:20px; }
+  input[type=text] { width:100%; padding:12px 14px; border:2px solid #dce9e0; border-radius:12px; font-size:16px; font-family:inherit; background:var(--bg); }
+  input:focus { outline:none; border-color:var(--green2); }
+  .meta { display:flex; justify-content:space-between; color:#5a6b60; font-size:14px; margin-bottom:14px; }
+  .bar { height:8px; background:#e4efe8; border-radius:6px; overflow:hidden; margin-bottom:20px; }
+  .bar div { height:100%; background:var(--green2); width:0%; transition:width .3s; }
+  .q { font-size:19px; font-weight:bold; line-height:1.7; margin-bottom:18px; }
+  .opt { display:block; width:100%; text-align:right; background:var(--bg); border:2px solid #dce9e0; border-radius:12px; padding:14px 16px; margin-top:10px; cursor:pointer; font-size:16px; line-height:1.6; transition:.15s; font-family:inherit; }
+  .opt:hover:not(:disabled) { border-color:var(--green2); }
+  .opt:disabled { cursor:default; opacity:.85; }
+  .opt.right { background:#e6f6ec; border-color:var(--green2); color:var(--green); font-weight:bold; }
+  .opt.wrong { background:#fbeaea; border-color:var(--red); color:var(--red); }
+  .why { display:none; margin-top:16px; background:#fff8e8; border-right:4px solid #d9a400; border-radius:10px; padding:14px 16px; font-size:15px; line-height:1.8; }
+  .why.show { display:block; }
+  .why b { color:#8a6500; }
+  .next, .btn { display:none; width:100%; margin-top:18px; background:var(--green); color:#fff; border:0; border-radius:12px; padding:15px; font-size:17px; font-weight:bold; cursor:pointer; }
+  .next.show, .btn { display:block; }
+  .btn { display:block; }
+  .score-big { font-size:48px; font-weight:bold; color:var(--green); text-align:center; }
+  .score-sub { text-align:center; color:#5a6b60; margin:10px 0 8px; font-size:16px; }
+  .muted { color:#8a9a90; font-size:13px; text-align:center; margin-top:16px; }
+  .err { background:#fbeaea; color:var(--red); border-radius:10px; padding:12px; margin-top:14px; font-size:14px; display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><span class="logo" id="qtitle">الاختبار</span></header>
 
+  <div class="card" id="nameCard">
+    <p style="font-size:16px;margin-bottom:12px;">اكتب اسمك ليبدأ الاختبار:</p>
+    <input type="text" id="sname" placeholder="اسمك">
+    <button class="btn" onclick="begin()">ابدأ الاختبار</button>
+    <div class="err" id="nameErr"></div>
+  </div>
+
+  <div class="card" id="quiz" style="display:none;">
+    <div class="meta"><span id="counter"></span><span id="running"></span></div>
+    <div class="bar"><div id="prog"></div></div>
+    <div class="q" id="qtext"></div>
+    <div id="opts"></div>
+    <div class="why" id="why"></div>
+    <button class="next" id="nextbtn" onclick="next()"></button>
+  </div>
+
+  <div class="card" id="result" style="display:none;">
+    <div class="score-big" id="scorenum"></div>
+    <div class="score-sub" id="scoremsg"></div>
+    <p class="muted">تم إرسال نتيجتك لمدربك. شكرًا لك.</p>
+  </div>
+
+  <div class="card" id="bad" style="display:none;">
+    <p>الرابط غير صحيح أو الاختبار غير موجود. تأكد من نسخ الرابط كاملًا.</p>
+  </div>
+</div>
+
+<script>
+const SUPA_URL = 'https://vgvkbsnpdpgybtsfwted.supabase.co';
+const SUPA_KEY = 'sb_publishable_v3QgxU-WmX2vOPmIr1vJZw_qaGTHVvg';
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+const quizId = new URLSearchParams(location.search).get('quiz');
+let quiz = null, qs = [], i = 0, score = 0, t0 = 0, student = '';
+
+function shuffle(a) { a = a.slice(); for (let j = a.length - 1; j > 0; j--) { const k = Math.floor(Math.random() * (j + 1)); [a[j], a[k]] = [a[k], a[j]]; } return a; }
+async function load() {
+  if (!quizId) return document.getElementById('bad').style.display = '';
+  const rq = await supa.from('quizzes').select('*').eq('id', quizId).single();
+  if (rq.error || !rq.data) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('bad').style.display = ''; }
+  quiz = rq.data;
+  document.getElementById('qtitle').textContent = quiz.title;
+  document.title = quiz.title;
+  const rs = await supa.from('questions').select('*').eq('quiz_id', quizId).order('ord');
+  qs = shuffle(rs.data || []).map(q => {
+    const order = shuffle(q.o.map((_, idx) => idx));
+    return { ...q, o: order.map(idx => q.o[idx]), a: order.indexOf(q.a) };
+  });
+  if (!qs.length) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('bad').style.display = ''; }
+}
+function begin() {
+  student = document.getElementById('sname').value.trim();
+  if (!student) { const e = document.getElementById('nameErr'); e.textContent = 'اكتب اسمك أولًا.'; e.style.display = 'block'; return; }
+  t0 = Date.now();
+  document.getElementById('nameCard').style.display = 'none';
+  show('quiz'); render();
+}
+function show(id) { ['quiz','result'].forEach(x => document.getElementById(x).style.display = x === id ? '' : 'none'); }
+function render() {
+  const q = qs[i];
+  document.getElementById('counter').textContent = 'سؤال ' + (i+1) + ' من ' + qs.length;
+  document.getElementById('running').textContent = 'صحيحة حتى الآن: ' + score;
+  document.getElementById('prog').style.width = (i / qs.length * 100) + '%';
+  document.getElementById('qtext').textContent = q.q;
+  const box = document.getElementById('opts');
+  box.innerHTML = '';
+  q.o.forEach((t, idx) => {
+    const b = document.createElement('button');
+    b.className = 'opt'; b.textContent = t;
+    b.onclick = () => answer(idx, b);
+    box.appendChild(b);
+  });
+  const why = document.getElementById('why');
+  why.className = 'why'; why.innerHTML = '';
+  document.getElementById('nextbtn').className = 'next';
+}
+function answer(idx, btn) {
+  const q = qs[i];
+  const opts = document.querySelectorAll('#opts .opt');
+  opts.forEach(o => o.disabled = true);
+  opts[q.a].classList.add('right');
+  let head;
+  if (idx === q.a) { score++; head = '✅ إجابة صحيحة!'; }
+  else { btn.classList.add('wrong'); head = '❌ إجابة غير صحيحة. الصحيح: «' + q.o[q.a] + '»'; }
+  const why = document.getElementById('why');
+  why.innerHTML = '<b>' + head + '</b>' + (q.e ? '<br>' + q.e : '');
+  why.classList.add('show');
+  document.getElementById('running').textContent = 'صحيحة حتى الآن: ' + score;
+  const nb = document.getElementById('nextbtn');
+  nb.textContent = (i + 1 < qs.length) ? 'السؤال التالي' : 'عرض النتيجة';
+  nb.classList.add('show');
+}
+async function next() {
+  if (i + 1 < qs.length) { i++; render(); return; }
+  document.getElementById('prog').style.width = '100%';
+  const seconds = Math.round((Date.now() - t0) / 1000);
+  document.getElementById('scorenum').textContent = score + ' من ' + qs.length;
+  const p = score / qs.length;
+  let m;
+  if (p >= .9) m = 'ممتاز! 🌟';
+  else if (p >= .7) m = 'جيد جدًا 💪';
+  else if (p >= .5) m = 'أساس كويس — راجع الشروحات 📚';
+  else m = 'حاول مرة أخرى بعد المراجعة 🔁';
+  document.getElementById('scoremsg').textContent = m;
+  show('result');
+  await supa.from('attempts').insert({ quiz_id: quizId, student_name: student, score, total: qs.length, seconds });
+}
+load();
+</script>
+</body>
+</html>
