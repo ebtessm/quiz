@@ -373,42 +373,58 @@ async function saveQuiz() {
     + '<button class="btn2" onclick="navigator.clipboard.writeText(\'' + link + '\');this.textContent=\'تم النسخ ✅\'">نسخ الرابط</button>';
   loadDashboard();
 }
+function safeNode(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = String(text == null ? '' : text);
+  if (className) node.className = className;
+  return node;
+}
 async function loadDashboard() {
-  const r = await supa.from('quizzes').select('*').order('created_at', { ascending: false });
   const box = document.getElementById('quizList');
-  if (!r.data || !r.data.length) { box.innerHTML = '<p class="muted" style="margin-top:10px;">لا اختبارات بعد — أنشئ أول اختبار من الأعلى.</p>'; return; }
-  box.innerHTML = '';
-  r.data.forEach(q => {
-    const d = document.createElement('div');
-    d.className = 'quiz-item';
-    d.innerHTML = '<b>' + q.title + '</b> <span class="muted">— ' + new Date(q.created_at).toLocaleDateString('ar-EG') + '</span><div class="muted">اضغط لعرض نتائج الطلاب</div>';
-    d.onclick = () => loadAttempts(q);
-    box.appendChild(d);
-  });
+  box.replaceChildren(safeNode('p', 'جاري تحميل الاختبارات...', 'muted'));
+  try {
+    const r = await supa.from('quizzes').select('*').order('created_at', { ascending: false });
+    if (r.error) throw new Error('load failed');
+    box.replaceChildren();
+    if (!r.data || !r.data.length) { box.append(safeNode('p', 'لا اختبارات بعد، أنشئ أول اختبار من الأعلى.', 'muted')); return; }
+    r.data.forEach(q => {
+      const d = safeNode('div'); d.className = 'quiz-item'; d.style.cursor = 'pointer';
+      d.append(safeNode('b', q.title), safeNode('span', ' · ' + new Date(q.created_at).toLocaleDateString('ar-EG'), 'muted'), safeNode('div', 'اضغط لعرض نتائج الطلاب', 'muted'));
+      d.onclick = () => loadAttempts(q); box.append(d);
+    });
+  } catch (e) { box.replaceChildren(safeNode('p', 'تعذر تحميل الاختبارات. أعد المحاولة، هذا لا يعني عدم وجود اختبارات.', 'err')); }
 }
 async function loadAttempts(q) {
-  const r = await supa.from('attempts').select('*').eq('quiz_id', q.id).order('created_at', { ascending: false });
   const box = document.getElementById('attempts');
-  const link = location.origin + location.pathname.replace('trainer.html', 'take.html') + '?quiz=' + q.id;
-  let html = '<h4 style="margin-top:16px;color:var(--green)">نتائج: ' + q.title + '</h4><div class="linkbox">' + link + '</div>';
-  if (!r.data || !r.data.length) html += '<p class="muted" style="margin-top:8px;">لم يحل أي طالب بعد.</p>';
-  else {
-    const atts = r.data;
-    const byScore = atts.slice().sort((x, y) => (y.score / y.total) - (x.score / x.total) || (x.seconds || 9999) - (y.seconds || 9999));
-    const fastest = atts.slice().sort((x, y) => (x.seconds || 9999) - (y.seconds || 9999))[0];
-    const top = byScore[0];
-    html += '<div style="display:flex;gap:10px;margin-top:14px;">'
-      + '<div style="flex:1;background:#fff8e8;border:2px solid #e8d9a8;border-radius:12px;padding:12px;text-align:center;"><div style="font-size:24px;">🏆</div><b>' + top.student_name + '</b><div class="muted">أعلى درجة: ' + top.score + ' من ' + top.total + '</div></div>'
-      + '<div style="flex:1;background:#eef7f1;border:2px solid #c9e3d2;border-radius:12px;padding:12px;text-align:center;"><div style="font-size:24px;">⚡</div><b>' + fastest.student_name + '</b><div class="muted">أسرع إنهاء: ' + (fastest.seconds ? fastest.seconds + ' ث' : '—') + '</div></div>'
-      + '</div>';
-    html += '<h4 style="margin-top:16px;color:var(--green)">لوحة الشرف 🥇</h4><table><tr><th>#</th><th>الطالب</th><th>النتيجة</th><th>الوقت</th><th>التاريخ</th></tr>';
-    const medals = ['🥇', '🥈', '🥉'];
-    byScore.forEach((a, idx) => {
-      html += '<tr><td>' + (medals[idx] || (idx + 1)) + '</td><td>' + a.student_name + '</td><td><b>' + a.score + ' من ' + a.total + '</b></td><td>' + (a.seconds ? a.seconds + ' ث' : '—') + '</td><td>' + new Date(a.created_at).toLocaleString('ar-EG') + '</td></tr>';
-    });
-    html += '</table>';
-  }
-  box.innerHTML = html;
+  const link = new URL('take.html', location.href); link.searchParams.set('quiz', String(q.id));
+  const title = safeNode('h4', 'نتائج: ' + q.title); title.style.cssText = 'margin-top:16px;color:var(--green)';
+  box.replaceChildren(title, safeNode('div', link.href, 'linkbox'), safeNode('p', 'جاري تحميل النتائج...', 'muted'));
+  try {
+    const r = await supa.from('attempts').select('*').eq('quiz_id', q.id).order('created_at', { ascending: false });
+    if (r.error) throw new Error('load failed');
+    box.lastChild.remove();
+    if (!r.data || !r.data.length) box.append(safeNode('p', 'لم تُسجّل نتائج مكتملة بعد.', 'muted'));
+    else {
+      const atts = r.data;
+      const byScore = atts.slice().sort((x, y) => (y.score / y.total) - (x.score / x.total) || (x.seconds || 9999) - (y.seconds || 9999));
+      const fastest = atts.slice().sort((x, y) => (x.seconds || 9999) - (y.seconds || 9999))[0];
+      const cards = safeNode('div'); cards.style.cssText = 'display:flex;gap:10px;margin-top:14px;flex-wrap:wrap';
+      [[byScore[0], '🏆', 'أعلى درجة: ' + byScore[0].score + ' من ' + byScore[0].total, '#fff8e8', '#e8d9a8'], [fastest, '⚡', 'أسرع إنهاء: ' + (fastest.seconds ? fastest.seconds + ' ث' : '—'), '#eef7f1', '#c9e3d2']].forEach(([a, icon, summary, bg, border]) => {
+        const card = safeNode('div'); card.style.cssText = 'flex:1;min-width:160px;border:2px solid ' + border + ';background:' + bg + ';border-radius:12px;padding:12px;text-align:center;overflow-wrap:anywhere';
+        const symbol = safeNode('div', icon); symbol.style.fontSize = '24px'; card.append(symbol, safeNode('b', a.student_name), safeNode('div', summary, 'muted')); cards.append(card);
+      });
+      const heading = safeNode('h4', 'لوحة الشرف 🥇'); heading.style.cssText = 'margin-top:16px;color:var(--green)';
+      const table = safeNode('table'), header = safeNode('tr');
+      ['#', 'الطالب', 'النتيجة', 'الوقت', 'التاريخ'].forEach(x => header.append(safeNode('th', x))); table.append(header);
+      const medals = ['🥇', '🥈', '🥉'];
+      byScore.forEach((a, idx) => {
+        const row = safeNode('tr');
+        [medals[idx] || (idx + 1), a.student_name, a.score + ' من ' + a.total, a.seconds ? a.seconds + ' ث' : '—', new Date(a.created_at).toLocaleString('ar-EG')].forEach(x => { const cell = safeNode('td', x); cell.style.overflowWrap = 'anywhere'; row.append(cell); });
+        table.append(row);
+      });
+      box.append(cards, heading, table);
+    }
+  } catch (e) { const message = safeNode('p', 'تعذر تحميل النتائج. أعد المحاولة، هذا لا يعني أن أحدًا لم يشارك.', 'err'); box.replaceChildren(title, safeNode('div', link.href, 'linkbox'), message); }
   box.scrollIntoView({ behavior: 'smooth' });
 }
 (async () => {
