@@ -99,6 +99,11 @@
   .fillin.bad { border-color:var(--red); background:#fbeaea; }
   .confirm { width:100%; margin-top:14px; background:var(--green2); color:#fff; border:0; border-radius:12px; padding:13px; font-size:16px; font-weight:bold; cursor:pointer; font-family:inherit; }
   @media(max-width:540px) { .mrow { flex-direction:column; align-items:stretch; gap:6px; margin-top:14px; } .mrow .ml { padding:9px 12px; } .mrow select { flex:none; } }
+  .qrow select,.qrow textarea {width:100%;font:inherit;padding:11px;border:2px solid #dce9e0;border-radius:10px;background:white;box-sizing:border-box;}
+  .qrow [hidden]{display:none!important}.qrow textarea{min-height:90px;resize:vertical;text-align:start}.qrow input[dir=auto]{text-align:start}
+  .pair-line{display:flex;gap:8px;margin-top:8px}.pair-line input{min-width:0;width:50%}
+  #quiz[dir=ltr] .why{border-right:0;border-left:4px solid var(--gold)}
+  @media(max-width:540px){.mrow{flex-direction:column;align-items:stretch}.mrow select{width:100%;min-width:0}.pair-line{flex-direction:column}.pair-line input{width:100%}}
 </style>
 </head>
 <body>
@@ -141,7 +146,7 @@
     </div>
     <div class="meta" style="display:flex;justify-content:space-between;color:#5a6b60;font-size:13px;margin-bottom:10px;"><span id="counter"></span></div>
     <div class="bar"><div id="prog"></div></div>
-    <div class="q" id="qtext"></div>
+    <div class="q" id="qtext" dir="auto" style="text-align:start"></div>
     <div id="opts"></div>
     <div class="gain" id="gain"></div>
     <div class="why" id="why"></div>
@@ -223,14 +228,39 @@ function stopBg() { if (bgId) { clearInterval(bgId); bgId = null; } }
 function toggleMute() { muted = !muted; document.getElementById('mutebtn').textContent = muted ? '🔇' : '🔊'; }
 
 function shuffle(a) { a = a.slice(); for (let j = a.length - 1; j > 0; j--) { const k = Math.floor(Math.random() * (j + 1)); [a[j], a[k]] = [a[k], a[j]]; } return a; }
+let uiEnglish=false;
+function tr(ar,en){return uiEnglish?en:ar;}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function timerLabel(n){return uiEnglish?'Time: '+n+' sec':'الوقت: '+n.toLocaleString('ar-EG')+' ثانية';}
+function applyPlayLanguage(rows){
+ const c=rows.map(q=>[q.q,...(q.o||[]),...(q.order_items||[]),...(q.left_items||[]),...(q.right_items||[])].join(' ')).join(' ');
+ uiEnglish=(c.match(/[A-Za-z]/g)||[]).length>(c.match(/[ء-ي]/g)||[]).length;
+ for(const id of ['quiz','result']){const e=document.getElementById(id);e.dir=uiEnglish?'ltr':'rtl';e.lang=uiEnglish?'en':'ar';}
+ document.querySelector('.score-label').textContent=tr('نقطة','points');
+ document.querySelector('#rcorrect + span').textContent=tr('إجابات صحيحة','Correct answers');
+ document.querySelector('#rbest + span').textContent=tr('أطول سلسلة 🔥','Best streak 🔥');
+ document.querySelector('#rtime + span').textContent=tr('الوقت','Time');
+ document.querySelector('#result .again').textContent=tr('🔁 جولة جديدة في نفس القسم','🔁 New round in this section');
+ document.querySelector('#result .ghost').textContent=tr('اختيار قسم آخر','Choose another section');
+}
+
 function start(sec) {
   cur = sec;
   audio(); // unlock sound on first tap
   const src = sec.indexOf('c:') === 0 ? ((loadCats()[sec.slice(2)] || { questions: [] }).questions) : BANKS[sec];
-  const typed = shuffle(src.filter(q => q.type && q.type !== 'mcq'));
-  const plain = shuffle(src.filter(q => !q.type || q.type === 'mcq'));
-  const selectedTypes = ['match', 'order', 'fill'].map(t => typed.find(q => q.type === t)).filter(Boolean);
-  const picked = shuffle(selectedTypes.concat(plain.slice(0, Math.max(0, N - selectedTypes.length))));
+  if (!src || !src.length) { show('home'); return; }
+  // Custom rounds include every supported type, up to ten questions, without duplicates.
+  const custom = sec.indexOf('c:') === 0;
+  let picked;
+  if (custom) {
+    const pool=shuffle(src), guaranteed=['mcq','tf','fill','order','match'].map(t=>pool.find(q=>(q.type||'mcq')===t)).filter(Boolean);
+    picked=shuffle(guaranteed.concat(pool.filter(q=>!guaranteed.includes(q)).slice(0,Math.max(0,N-guaranteed.length))));
+  } else {
+    const typed=shuffle(src.filter(q=>q.type&&q.type!=='mcq')),plain=shuffle(src.filter(q=>!q.type||q.type==='mcq'));
+    const selectedTypes=['match','order','fill'].map(t=>typed.find(q=>q.type===t)).filter(Boolean);
+    picked=shuffle(selectedTypes.concat(plain.slice(0,Math.max(0,N-selectedTypes.length))));
+  }
+  applyPlayLanguage(custom ? src : []);
   bank = picked.map(q => prepQ(q));
   qs = bank; i = 0; correct = 0; points = 0; streak = 0; bestStreak = 0; t0 = Date.now();
   show('quiz'); render();
@@ -261,10 +291,10 @@ function startTimer() {
   clearInterval(timerId);
   timeLeft = qTime(qs[i]);
   const tp = document.getElementById('timerpill');
-  tp.textContent = 'الوقت: ' + timeLeft.toLocaleString('ar-EG') + ' ثانية'; tp.classList.remove('low');
+  tp.textContent = timerLabel(timeLeft); tp.classList.remove('low');
   timerId = setInterval(() => {
     timeLeft--;
-    tp.textContent = 'الوقت: ' + Math.max(timeLeft, 0).toLocaleString('ar-EG') + ' ثانية';
+    tp.textContent = timerLabel(Math.max(timeLeft, 0));
     if (timeLeft <= 5) { tp.classList.add('low'); if (timeLeft > 0) sTick(); }
     if (timeLeft <= 0) { clearInterval(timerId); timeout(); }
   }, 1000);
@@ -272,7 +302,7 @@ function startTimer() {
 function render() {
   const q = qs[i];
   answered = false;
-  document.getElementById('counter').textContent = 'سؤال ' + (i + 1) + ' من ' + qs.length;
+  document.getElementById('counter').textContent = tr('سؤال ', 'Question ') + (i + 1) + tr(' من ', ' of ') + qs.length;
   document.getElementById('prog').style.width = (i / qs.length * 100) + '%';
   document.getElementById('qtext').textContent = q.q;
   document.getElementById('gain').textContent = '';
@@ -284,24 +314,25 @@ function render() {
       const row = document.createElement('div');
       row.className = 'mrow';
       row.innerHTML = '<div class="ml"></div>';
-      row.querySelector('.ml').textContent = lt;
-      const sel = document.createElement('select');
-      sel.innerHTML = '<option value="">اختر المقابل…</option>' + q._rights.map(r => '<option value="' + r.idx + '"></option>').join('');
+      row.querySelector('.ml').dir = 'auto'; row.querySelector('.ml').style.textAlign = 'start'; row.querySelector('.ml').textContent = lt;
+      const sel = document.createElement('select'); sel.dir = 'auto'; sel.style.textAlign = 'start';
+      sel.innerHTML = '<option value="">' + tr('اختر المقابل…', 'Choose a match…') + '</option>' + q._rights.map(r => '<option value="' + r.idx + '"></option>').join('');
       [...sel.querySelectorAll('option')].slice(1).forEach((o, k2) => o.textContent = q._rights[k2].t);
       sel.id = 'msel' + k;
       row.appendChild(sel);
       box.appendChild(row);
     });
     const cb = document.createElement('button');
-    cb.className = 'confirm'; cb.textContent = 'تأكيد التوصيل';
+    cb.className = 'confirm'; cb.textContent = tr('تأكيد التوصيل', 'Confirm matches');
     cb.onclick = () => settleMatch(false);
     box.appendChild(cb);
   } else if (q.type === 'fill') {
     const row = document.createElement('div');
-    row.innerHTML = '<input type="text" id="fillIn" class="fillin" placeholder="اكتب الكلمة أو المعلومة الناقصة هنا" autocomplete="off">';
+    row.innerHTML = '<input type="text" dir="auto" style="text-align:start" id="fillIn" class="fillin" placeholder="اكتب الكلمة أو المعلومة الناقصة هنا" autocomplete="off">';
+    row.querySelector('input').placeholder = tr('اكتب الكلمة أو المعلومة الناقصة هنا', 'Type the missing word or fact');
     box.appendChild(row);
     const cb = document.createElement('button');
-    cb.className = 'confirm'; cb.textContent = 'تأكيد الإجابة';
+    cb.className = 'confirm'; cb.textContent = tr('تأكيد الإجابة', 'Confirm answer');
     cb.onclick = () => settleFill(false);
     box.appendChild(cb);
     setTimeout(() => { const f = document.getElementById('fillIn'); if (f) f.focus(); }, 50);
@@ -309,13 +340,13 @@ function render() {
   } else if (q.type === 'order') {
     renderOrderList(q, box);
     const cb = document.createElement('button');
-    cb.className = 'confirm'; cb.textContent = 'تأكيد الترتيب';
+    cb.className = 'confirm'; cb.textContent = tr('تأكيد الترتيب', 'Confirm order');
     cb.onclick = () => settleOrder(false);
     box.appendChild(cb);
   } else {
     q.o.forEach((t, idx) => {
       const b = document.createElement('button');
-      b.className = 'opt'; b.textContent = t;
+      b.className = 'opt'; b.dir = 'auto'; b.style.textAlign = 'start'; b.textContent = t;
       b.onclick = () => answer(idx, b);
       box.appendChild(b);
     });
@@ -343,20 +374,20 @@ function settle(idx, btn, timedOut) {
     streak++;
     bestStreak = Math.max(bestStreak, streak);
     document.getElementById('gain').textContent = '+' + gained;
-    head = '✅ إجابة صحيحة!';
-    if (streak >= 3) { head += ' سلسلة 🔥×' + streak; sStreak(); } else sCorrect();
+    head = tr('✅ إجابة صحيحة!', '✅ Correct!');
+    if (streak >= 3) { head += tr(' سلسلة 🔥×', ' Streak 🔥×') + streak; sStreak(); } else sCorrect();
   } else {
     if (!timedOut && btn) btn.classList.add('wrong');
     streak = 0;
-    head = timedOut ? '⏰ انتهى الوقت! الصحيح: «' + q.o[q.a] + '»' : '❌ إجابة غير صحيحة. الصحيح: «' + q.o[q.a] + '»';
+    head = (timedOut ? tr('⏰ انتهى الوقت! الصحيح: «', '⏰ Time is up! Correct answer: «') : tr('❌ إجابة غير صحيحة. الصحيح: «', '❌ Incorrect. Correct answer: «')) + esc(q.o[q.a]) + '»';
     sWrong();
   }
   const why = document.getElementById('why');
-  why.innerHTML = '<b>' + head + '</b>' + (q.e ? '<br>' + q.e : '');
+  why.innerHTML = '<b>' + head + '</b>' + (q.e ? '<div dir="auto" style="text-align:start">' + esc(q.e) + '</div>' : '');
   why.classList.add('show');
   hud();
   const nb = document.getElementById('nextbtn');
-  nb.textContent = (i + 1 < qs.length) ? 'السؤال التالي' : 'عرض النتيجة 🏁';
+  nb.textContent = (i + 1 < qs.length) ? tr('السؤال التالي', 'Next question') : tr('عرض النتيجة 🏁', 'Show result 🏁');
   nb.classList.add('show');
 }
 function renderOrderList(q, box) {
@@ -366,8 +397,9 @@ function renderOrderList(q, box) {
     const row = document.createElement('div');
     row.className = 'orow';
     row.innerHTML = '<div class="ot"></div><div class="obtns"><button type="button" title="أعلى">▲</button><button type="button" title="أسفل">▼</button></div>';
-    row.querySelector('.ot').textContent = (pos + 1) + '. ' + it.t;
+    row.querySelector('.ot').dir = /[ء-ي]/.test(it.t) ? 'rtl' : 'ltr'; row.querySelector('.ot').style.textAlign = 'start'; row.querySelector('.ot').textContent = (pos + 1) + '. ' + it.t;
     const [up, dn] = row.querySelectorAll('button');
+    up.title = tr('أعلى', 'Move up'); dn.title = tr('أسفل', 'Move down');
     up.onclick = () => { if (pos > 0) { const t = q._disp[pos - 1]; q._disp[pos - 1] = q._disp[pos]; q._disp[pos] = t; renderOrderList(q, box); } };
     dn.onclick = () => { if (pos < q._disp.length - 1) { const t = q._disp[pos + 1]; q._disp[pos + 1] = q._disp[pos]; q._disp[pos] = t; renderOrderList(q, box); } };
     box.insertBefore(row, cb);
@@ -386,28 +418,28 @@ function finishTyped(ok, correctHtml) {
     streak++;
     bestStreak = Math.max(bestStreak, streak);
     document.getElementById('gain').textContent = '+' + gained;
-    head = '✅ إجابة صحيحة!';
-    if (streak >= 3) { head += ' سلسلة 🔥×' + streak; sStreak(); } else sCorrect();
+    head = tr('✅ إجابة صحيحة!', '✅ Correct!');
+    if (streak >= 3) { head += tr(' سلسلة 🔥×', ' Streak 🔥×') + streak; sStreak(); } else sCorrect();
   } else {
     streak = 0;
-    head = '❌ إجابة غير صحيحة.';
+    head = tr('❌ إجابة غير صحيحة.', '❌ Incorrect.');
     sWrong();
   }
   const why = document.getElementById('why');
-  why.innerHTML = '<b>' + head + '</b><br>' + correctHtml + (q.e ? '<br>' + q.e : '');
+  why.innerHTML = '<b>' + head + '</b><br>' + correctHtml + (q.e ? '<div dir="auto" style="text-align:start">' + esc(q.e) + '</div>' : '');
   why.classList.add('show');
   hud();
   const nb = document.getElementById('nextbtn');
-  nb.textContent = (i + 1 < qs.length) ? 'السؤال التالي' : 'عرض النتيجة 🏁';
+  nb.textContent = (i + 1 < qs.length) ? tr('السؤال التالي', 'Next question') : tr('عرض النتيجة 🏁', 'Show result 🏁');
   nb.classList.add('show');
 }
 function normTxt(s) {
   return (s || '').trim()
-    .replace(/[ً-ْٰ]/g, '')
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/ى/g, 'ي')
-    .replace(/ـ/g, '')
+    .replace(/[\u064B-\u0652\u0670]/g, '')
+    .replace(/[\u0623\u0625\u0622]/g, '\u0627')
+    .replace(/\u0629/g, '\u0647')
+    .replace(/\u0649/g, '\u064A')
+    .replace(/\u0640/g, '')
     .replace(/\s+/g, ' ')
     .toLowerCase();
 }
@@ -419,7 +451,7 @@ function settleFill(timedOut) {
   const ok = !timedOut && inp && normTxt(inp.value) !== '' && [expected].concat(q.accepted || []).some(a => normTxt(inp.value) === normTxt(a));
   if (inp) { inp.disabled = true; inp.classList.add(ok ? 'good' : 'bad'); }
   const cb = document.querySelector('#opts .confirm'); if (cb) cb.disabled = true;
-  const correctHtml = 'الإجابة الصحيحة: «' + expected + '»';
+  const correctHtml = tr('الإجابة الصحيحة: «', 'Correct answer: «') + esc(expected) + '»';
   finishTyped(ok, correctHtml);
 }
 function settleMatch(timedOut) {
@@ -434,7 +466,7 @@ function settleMatch(timedOut) {
     if (!good) ok = false;
   });
   const cb = document.querySelector('#opts .confirm'); if (cb) cb.disabled = true;
-  const correctHtml = 'التوصيل الصحيح:<br>' + (q.left_items || []).map((lt, k) => '• ' + lt + ' ← ' + (q.right_items || [])[k]).join('<br>');
+  const correctHtml = tr('التوصيل الصحيح:<br>', 'Correct matches:<br>') + (q.left_items || []).map((lt, k) => '• ' + esc(lt) + ' ← ' + esc((q.right_items || [])[k])).join('<br>');
   finishTyped(ok, correctHtml);
 }
 function settleOrder(timedOut) {
@@ -449,7 +481,7 @@ function settleOrder(timedOut) {
     row.querySelectorAll('button').forEach(b => b.disabled = true);
   });
   const cb = document.querySelector('#opts .confirm'); if (cb) cb.disabled = true;
-  const correctHtml = 'الترتيب الصحيح:<br>' + (q.order_items || []).map((t, k) => (k + 1) + '. ' + t).join('<br>');
+  const correctHtml = tr('الترتيب الصحيح:<br>', 'Correct order:<br>') + (q.order_items || []).map((t, k) => (k + 1) + '. ' + esc(t)).join('<br>');
   finishTyped(ok, correctHtml);
 }
 function answer(idx, btn) { settle(idx, btn, false); }
@@ -467,14 +499,14 @@ function next() {
   document.getElementById('scorenum').textContent = points;
   document.getElementById('rcorrect').textContent = correct + '/' + qs.length;
   document.getElementById('rbest').textContent = '×' + bestStreak;
-  document.getElementById('rtime').textContent = seconds + ' ث';
+  document.getElementById('rtime').textContent = seconds + tr(' ث',' sec');
   const p = correct / qs.length;
   let m;
   if (p >= .9) m = 'أسطوري! مستواك قوي جدًا في هذا القسم 🏆';
   else if (p >= .7) m = 'أداء قوي — راجع الأسئلة اللي غلطت فيها 💪';
   else if (p >= .5) m = 'أساس كويس — أعد المحاولة وركّز على الشروحات 📚';
   else m = 'بداية طيبة — اقرأ الشروحات وحاول مرة أخرى 🔁';
-  document.getElementById('scoremsg').textContent = m;
+  document.getElementById('scoremsg').textContent = uiEnglish ? (p>=.9?'Outstanding! 🏆':p>=.7?'Strong performance 💪':p>=.5?'Review the explanations 📚':'Review, then try again 🔁') : m;
   show('result');
   sFinish();
 }
@@ -484,7 +516,7 @@ function restart(same) { if (same) start(cur); else show('home'); }
 const CKEY = 'tahaddy_custom_cats_v1';
 let editKey = null, cqCount = 0;
 function loadCats() { try { return JSON.parse(localStorage.getItem(CKEY)) || {}; } catch (e) { return {}; } }
-function saveCats(c) { try { localStorage.setItem(CKEY, JSON.stringify(c)); } catch (e) {} }
+function saveCats(c) { try { localStorage.setItem(CKEY, JSON.stringify(c)); return true; } catch (e) { return false; } }
 function renderCats() {
   const cats = loadCats();
   const box = document.getElementById('customCats');
@@ -523,48 +555,53 @@ function openEditor(k) {
 }
 function addCQ(q) {
   cqCount++;
-  const n = cqCount;
-  const div = document.createElement('div');
-  div.className = 'qrow'; div.id = 'cq' + n;
-  div.innerHTML = '<h4>سؤال <button type="button" style="float:left;background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;font-family:inherit;" onclick="this.parentNode.parentNode.remove()">حذف السؤال</button></h4>'
-    + '<label>نص السؤال</label><input type="text" class="cq" placeholder="اكتب السؤال">'
-    + '<label>الاختيارات الأربعة (حدد الصحيحة بعلامة الدائرة)</label>'
-    + [0, 1, 2, 3].map(x => '<div class="opt-line"><input type="radio" name="cc' + n + '" value="' + x + '"' + (x === 0 ? ' checked' : '') + '><input type="text" class="co" placeholder="اختيار ' + (x + 1) + '"></div>').join('')
-    + '<label>شرح الإجابة (اختياري)</label><input type="text" class="ce" placeholder="لماذا هذه هي الإجابة الصحيحة؟">';
-  document.getElementById('cqlist').appendChild(div);
-  if (q) {
-    div.querySelector('.cq').value = q.q;
-    const os = div.querySelectorAll('.co');
-    q.o.forEach((t, x) => { if (os[x]) os[x].value = t; });
-    const r = div.querySelector('input[name="cc' + n + '"][value="' + q.a + '"]');
-    if (r) r.checked = true;
-    div.querySelector('.ce').value = q.e || '';
+  const n=cqCount, div=document.createElement('div');
+  div.className='qrow';div.id='cq'+n;div._original=q?JSON.parse(JSON.stringify(q)):{};
+  div.innerHTML='<h4>سؤال <button type="button" class="remove-cq" style="float:left;color:var(--red)">حذف السؤال</button></h4>'
+    +'<label>نوع السؤال</label><select class="ctype"><option value="mcq">اختيار من متعدد</option><option value="tf">صح أو خطأ</option><option value="fill">أكمل بالكتابة</option><option value="order">ترتيب</option><option value="match">توصيل</option></select>'
+    +'<label>نص السؤال</label><input type="text" dir="auto" class="cq" placeholder="اكتب السؤال">'
+    +'<div class="fields-mcq"><label>الاختيارات الأربعة، حدد الإجابة الصحيحة</label>'+[0,1,2,3].map(x=>'<div class="opt-line"><input type="radio" name="cc'+n+'" value="'+x+'" '+(x===0?'checked':'')+'><input type="text" dir="auto" class="co" placeholder="اختيار '+(x+1)+'"></div>').join('')+'</div>'
+    +'<div class="fields-tf"><label>لغة اختيارات صح أو خطأ</label><select class="tf-lang"><option value="ar">صح / خطأ</option><option value="en">True / False</option></select><label>الإجابة الصحيحة</label><select class="tf-answer"><option value="0">صح / True</option><option value="1">خطأ / False</option></select></div>'
+    +'<div class="fields-fill"><label>الإجابة الصحيحة، ضع ____ مكان المعلومة في السؤال</label><input type="text" dir="auto" class="fill-answer"><label>إجابات بديلة مقبولة، كل إجابة في سطر (اختياري)</label><textarea dir="auto" class="fill-alts"></textarea></div>'
+    +'<div class="fields-order"><label>اكتب من ٣ إلى ٦ خطوات، كل خطوة في سطر بالترتيب الصحيح. ستظهر بترتيب عشوائي للاعب.</label><textarea dir="auto" class="order-lines" rows="5"></textarea></div>'
+    +'<div class="fields-match"><label>أربعة أزواج صحيحة، اكتب العنصر ومعناه في نفس الصف. ستختلط المعاني عند اللعب.</label>'+[0,1,2,3].map(x=>'<div class="pair-line"><input type="text" dir="auto" class="match-left" placeholder="العنصر '+(x+1)+'"><input type="text" dir="auto" class="match-right" placeholder="المقابل '+(x+1)+'"></div>').join('')+'</div>'
+    +'<label>شرح الإجابة (اختياري)</label><input type="text" dir="auto" class="ce">';
+  div.querySelector('.remove-cq').onclick=()=>div.remove();
+  const type=div.querySelector('.ctype');type.value=q?.type||'mcq';
+  type.onchange=()=>['mcq','tf','fill','order','match'].forEach(t=>div.querySelector('.fields-'+t).hidden=type.value!==t);
+  div.querySelector('.cq').value=q?.q||'';div.querySelector('.ce').value=q?.e||'';
+  if(q){
+    if(!q.type||q.type==='mcq'){div.querySelectorAll('.co').forEach((x,k)=>x.value=q.o?.[k]||'');const r=div.querySelector('input[name="cc'+n+'"][value="'+q.a+'"]');if(r)r.checked=true;}
+    if(q.type==='tf'){div.querySelector('.tf-lang').value=q.o?.[0]==='True'?'en':'ar';div.querySelector('.tf-answer').value=q.a;}
+    if(q.type==='fill'){div.querySelector('.fill-answer').value=q.o?.[q.a]||'';div.querySelector('.fill-alts').value=(q.accepted||[]).join('\n');}
+    if(q.type==='order')div.querySelector('.order-lines').value=(q.order_items||[]).join('\n');
+    if(q.type==='match'){div.querySelectorAll('.match-left').forEach((x,k)=>x.value=q.left_items?.[k]||'');div.querySelectorAll('.match-right').forEach((x,k)=>x.value=q.right_items?.[k]||'');}
   }
+  type.onchange();document.getElementById('cqlist').appendChild(div);
 }
 function saveCat() {
-  const name = document.getElementById('catName').value.trim();
-  const msg = document.getElementById('edMsg');
-  const bad = t => { msg.className = 'msg err'; msg.textContent = t; };
-  if (!name) return bad('اكتب اسم القسم أولًا.');
-  const rows = [];
-  const boxes = document.querySelectorAll('#cqlist .qrow');
-  for (const box of boxes) {
-    const q = box.querySelector('.cq').value.trim();
-    if (!q) continue;
-    const o = [...box.querySelectorAll('.co')].map(x => x.value.trim());
-    const r = box.querySelector('input[type=radio]:checked');
-    const a = r ? parseInt(r.value) : 0;
-    const e = box.querySelector('.ce').value.trim();
-    if (o.some(x => !x)) return bad('أكمل الاختيارات الأربعة للسؤال: «' + q.slice(0, 40) + '»');
-    rows.push({ q, o, a, e });
+  const name=document.getElementById('catName').value.trim(),msg=document.getElementById('edMsg');
+  const bad=t=>{msg.className='msg err';msg.textContent=t;};
+  if(!name)return bad('اكتب اسم القسم أولًا.');
+  const rows=[];
+  for(const box of document.querySelectorAll('#cqlist .qrow')){
+    const q=box.querySelector('.cq').value.trim(),type=box.querySelector('.ctype').value,e=box.querySelector('.ce').value.trim();
+    if(!q)return bad('اكتب نص كل سؤال أو احذف السؤال الفارغ.');
+    const v=s=>box.querySelector(s).value.trim(),lines=s=>v(s).split('\n').map(x=>x.trim()).filter(Boolean);
+    let out={...box._original,q,e,type};
+    if(type==='mcq'){const o=[...box.querySelectorAll('.co')].map(x=>x.value.trim());if(o.some(x=>!x)||new Set(o).size!==4)return bad('اكتب أربعة اختيارات مختلفة وكاملة: '+q);out.o=o;out.a=+box.querySelector('input[type=radio]:checked').value;}
+    if(type==='tf'){out.o=v('.tf-lang')==='en'?['True','False']:['صح','خطأ'];out.a=+v('.tf-answer');}
+    if(type==='fill'){if(!v('.fill-answer'))return bad('اكتب إجابة أكمل: '+q);if(!q.includes('____'))return bad('ضع ____ مكان الإجابة الناقصة: '+q);out.o=[v('.fill-answer')];out.a=0;out.accepted=lines('.fill-alts');}
+    if(type==='order'){out.order_items=lines('.order-lines');if(out.order_items.length<3||out.order_items.length>6||new Set(out.order_items).size!==out.order_items.length)return bad('الترتيب يحتاج من ٣ إلى ٦ خطوات مختلفة: '+q);out.o=[];out.a=0;}
+    if(type==='match'){out.left_items=[...box.querySelectorAll('.match-left')].map(x=>x.value.trim());out.right_items=[...box.querySelectorAll('.match-right')].map(x=>x.value.trim());if([...out.left_items,...out.right_items].some(x=>!x)||new Set(out.left_items).size!==4||new Set(out.right_items).size!==4)return bad('أكمل أربعة أزواج مختلفة للتوصيل: '+q);out.o=[];out.a=0;}
+    // Preserve legacy MCQ shape on an unchanged save, including unknown fields.
+    if(type==='mcq'&&!box._original.type)delete out.type;
+    rows.push(out);
   }
-  if (!rows.length) return bad('أضف سؤالًا واحدًا على الأقل باختياراته الأربعة.');
-  const cats = loadCats();
-  const k = editKey || ('k' + Date.now());
-  cats[k] = { name, questions: rows };
-  saveCats(cats);
-  renderCats();
-  show('home');
+  if(!rows.length)return bad('أضف سؤالًا واحدًا على الأقل.');
+  const cats=loadCats(),k=editKey||('k'+Date.now());cats[k]={...cats[k],name,questions:rows};
+  if(!saveCats(cats))return bad('تعذر الحفظ على هذا المتصفح. لم يتم حذف أسئلتك.');
+  renderCats();show('home');
 }
 function delCat(k) {
   const cats = loadCats();
@@ -627,4 +664,4 @@ async function submitFeedback() {
 }
 </script>
 </body>
-</html>
+  </html>
