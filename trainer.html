@@ -73,7 +73,21 @@
     <label>كلمة المرور</label>
     <input type="password" id="password" placeholder="6 أحرف على الأقل">
     <button class="btn" id="authBtn" onclick="doAuth()">دخول</button>
+    <button class="btn2" id="forgotBtn" type="button" onclick="requestRecovery()">نسيت كلمة المرور؟</button>
+    <p class="muted" id="recoverySendStatus" role="status" aria-live="polite"></p>
     <div class="err" id="authErr"></div>
+  </div>
+
+  <div class="card" id="recoverCard" style="display:none;">
+    <h2 style="color:var(--green)">اختيار كلمة مرور جديدة</h2>
+    <p class="muted">اكتب كلمة مرور جديدة هنا فقط، لا تبعتها في محادثة أو إيميل. نحتاج رابط استرجاع صالحًا من بريدك.</p>
+    <form id="recoverForm">
+    <label for="recoverPassword">كلمة المرور الجديدة، 12حرفًا على الأقل</label><input id="recoverPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+    <label for="recoverConfirm">تأكيد كلمة المرور</label><input id="recoverConfirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+    <button class="btn" id="recoverSubmit" type="submit">حفظ كلمة المرور الجديدة</button>
+    <p id="recoverStatus" class="muted" role="status" aria-live="polite"></p>
+    </form>
+    <button class="btn2" type="button" onclick="exitRecovery()">رجوع لتسجيل الدخول</button>
   </div>
 
   <div class="card" id="ownerExport" style="display:none;">
@@ -141,7 +155,12 @@ const SUPA_URL = 'https://vgvkbsnpdpgybtsfwted.supabase.co';
 const SUPA_KEY = 'sb_publishable_v3QgxU-WmX2vOPmIr1vJZw_qaGTHVvg';
 const GENQ_URL = SUPA_URL + '/functions/v1/genq';
 const OWNER_UID = 'd135bdc1-b4a6-4050-8a75-a11eef59c073';
+const recoveryRequested = /(?:^|[?#&])(?:type=recovery|recovery=1)(?:&|$)/.test(location.search + location.hash);
+let recoveryActive = recoveryRequested, recoveryVerified = false;
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+supa.auth.onAuthStateChange((event, session) => {
+ if (event === 'PASSWORD_RECOVERY') { recoveryActive = true; recoveryVerified = !!session; queueMicrotask(showRecovery); }
+});
 
 const safeCell = v => (typeof v === 'string' && v.length && '=+-@\t\r'.includes(v.charAt(0))) ? '\u200B' + v : v;
 async function exportSurvey() {
@@ -214,6 +233,7 @@ async function doAuth() {
   enter(r.data.session.user);
 }
 function enter(u) {
+  if(recoveryActive){showRecovery();return;}
   user = u;
   document.getElementById('auth').style.display = 'none';
   document.getElementById('builder').style.display = '';
@@ -427,9 +447,50 @@ async function loadAttempts(q) {
   } catch (e) { const message = safeNode('p', 'تعذر تحميل النتائج. أعد المحاولة، هذا لا يعني أن أحدًا لم يشارك.', 'err'); box.replaceChildren(title, safeNode('div', link.href, 'linkbox'), message); }
   box.scrollIntoView({ behavior: 'smooth' });
 }
+async function requestRecovery() {
+  const email = document.getElementById('email').value.trim();
+  const status = document.getElementById('recoverySendStatus'), button = document.getElementById('forgotBtn');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { status.textContent = 'اكتب إيميل حساب المدرب أولًا، ثم اضغط نسيت كلمة المرور.'; return; }
+  button.disabled = true; status.textContent = 'جاري طلب رابط الاسترجاع...';
+  try {
+    const result = await supa.auth.resetPasswordForEmail(email, { redirectTo: 'https://ebtessm.github.io/quiz/trainer.html?recovery=1' });
+    if (result.error) throw new Error('request failed');
+    status.textContent = 'لو الإيميل مسجل ومسموح له باستقبال الرسائل، هيجيلك رابط استرجاع. راجع الوارد والرسائل غير المرغوب فيها. الطلب وحده لا يؤكد وصول الرسالة. انتظر دقيقة قبل إعادة الطلب.';
+  } catch(e) { status.textContent = 'تعذر طلب رابط الاسترجاع. قد تكون خدمة الإيميل غير مفعلة لهذا العنوان أو حد الإرسال وصل. حاول لاحقًا أو تواصل مع مسؤولة كويزورا. لم تتغير كلمة مرورك.'; }
+  finally { setTimeout(() => { button.disabled = false; }, 60000); }
+}
+function showRecovery() {
+  ['auth','builder','dash','ownerExport','signoutBox'].forEach(id => document.getElementById(id).style.display='none');
+  document.getElementById('recoverCard').style.display='';
+  document.getElementById('recoverSubmit').disabled=!recoveryVerified;
+  document.getElementById('recoverStatus').textContent = recoveryVerified ? 'رابط الاسترجاع صالح. اختَر كلمة مرور جديدة.' : 'جاري التحقق من رابط الاسترجاع. لو الرابط منتهي أو غير صالح، ارجع للدخول واطلب رابطًا جديدًا. لا تكفي علامة recovery في العنوان لتغيير كلمة المرور.';
+}
+async function exitRecovery() {
+  document.getElementById('recoverPassword').value=''; document.getElementById('recoverConfirm').value='';
+  if (recoveryActive) await supa.auth.signOut();
+  location.replace('https://ebtessm.github.io/quiz/trainer.html');
+}
+document.getElementById('recoverForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input=document.getElementById('recoverPassword'), confirm=document.getElementById('recoverConfirm'), status=document.getElementById('recoverStatus'), button=document.getElementById('recoverSubmit');
+  if(!recoveryVerified){status.textContent='رابط الاسترجاع غير متحقق. اطلب رابطًا جديدًا من صفحة الدخول.';return;}
+  if(input.value.length<12||input.value.length>128){status.textContent='استخدم كلمة مرور من12إلى128حرفًا.';return;}
+  if(input.value!==confirm.value){status.textContent='كلمتا المرور غير متطابقتين.';return;}
+  button.disabled=true;status.textContent='جاري حفظ كلمة المرور الجديدة...';
+  try {
+    const response=await supa.auth.updateUser({password:input.value});
+    if(response.error)throw new Error('update failed');
+    input.value='';confirm.value='';recoveryVerified=false;
+    await supa.auth.signOut();
+    status.textContent='تم تغيير كلمة المرور. اضغط رجوع لتسجيل الدخول واستخدم الكلمة الجديدة. لن تُعرض هنا مرة أخرى.';
+    history.replaceState(null,'','trainer.html');
+  }catch(e){input.value='';confirm.value='';status.textContent='لم يتأكد تغيير كلمة المرور. قد يكون الرابط انتهى أو الكلمة غير مقبولة. اطلب رابط استرجاع جديدًا عند الحاجة.';button.disabled=false;}
+});
 (async () => {
-  const s = await supa.auth.getSession();
-  if (s.data.session) enter(s.data.session.user);
+  if(recoveryActive)showRecovery();
+  const result=await supa.auth.getSession();
+  if(recoveryActive){showRecovery();return;}
+  if(result.data.session)enter(result.data.session.user);
 })();
 </script>
 <footer style="text-align:center;color:#8a9a90;font-size:13px;margin:30px 0 20px;">تحدي 🎯 · Quizora — اتعلم وانت بتلعب<br><span dir="ltr">Powered by Ebtessam Desouky</span></footer>
