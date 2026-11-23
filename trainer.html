@@ -52,6 +52,8 @@
   .pair-line input { flex:1; }
   .pair-arrow { color:var(--green2); font-weight:bold; }
   .ord-num { color:var(--green); font-weight:bold; min-width:22px; }
+
+.code-panel{direction:ltr;text-align:left;unicode-bidi:isolate;white-space:pre;overflow:auto;max-width:100%;background:#f0f2f8;color:#162437;border:1px solid #d8dfeb;border-radius:12px;padding:14px;font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;margin:8px 0 16px}.code-label{display:block;text-align:left;direction:ltr;color:#596679;font:12px monospace;margin-top:12px}.code-fields textarea{direction:ltr;text-align:left;white-space:pre;font:14px/1.6 monospace;min-height:130px;width:100%}.code-fields[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -107,11 +109,11 @@
       <label for="genLanguage">لغة الأسئلة</label>
       <select id="genLanguage" style="width:100%;padding:12px;border:2px solid #dce9e0;border-radius:12px;font:inherit;background:#f6fbf8"><option value="auto">تلقائي حسب لغة الملف</option><option value="en">English</option><option value="ar">العربية</option></select>
       <p class="muted">للملفات المختلطة، اختاري اللغة المطلوبة. الاختيار يغيّر الأسئلة وليس لغة الواجهة.</p>
-      <p class="muted" style="margin-top:10px;">التوليد بيغطي كل أنواع الأسئلة اللي المحتوى يسمح بيها: اختيار من متعدد، صح/خطأ، أكمل، ترتيب، توصيل. راجع الأسئلة تحت وعدّل أو امسح اللي مش عاجبك قبل الحفظ.</p>
+      <p class="muted" style="margin-top:10px;">التوليد بيغطي كل أنواع الأسئلة اللي المحتوى يسمح بيها: اختيار من متعدد، صح/خطأ، أكمل، ترتيب، توصيل، واكتشاف أخطاء الكود عندما تحتوي المادة على كود وسياق كافٍ. الكود للعرض فقط ولا يتم تشغيله. راجع الأسئلة تحت وعدّل أو امسح اللي مش عاجبك قبل الحفظ.</p>
     </div>
 
     <div id="qlist"></div>
-    <button class="btn2" onclick="addQuestion()">+ إضافة سؤال يدويًا</button>
+    <button class="btn2" onclick="addQuestion()">+ إضافة سؤال يدويًا</button><button class="btn2" onclick="addQuestion({type:'code_error',q:'',o:['','','',''],a:0})">+ اكتشف الخطأ في الكود</button>
     <button class="btn" onclick="saveQuiz()">حفظ الاختبار والحصول على الرابط</button>
     <div class="err" id="buildErr"></div>
     <div class="ok" id="buildOk"></div>
@@ -130,6 +132,11 @@
 </div>
 
 <script>
+
+function splitCodeQuestion(s){const m=String(s||'').match(/^([\s\S]*?)\n```([a-zA-Z0-9_+#.-]{0,24})\n([\s\S]{1,12000})\n```\s*$/);return m?{prompt:m[1],lang:m[2],code:m[3]}:null;}
+function joinCodeQuestion(prompt,lang,code){return prompt+'\n```'+lang.replace(/[^a-zA-Z0-9_+#.-]/g,'').slice(0,24)+'\n'+code+'\n```';}
+function renderQuestionText(el,s){const c=splitCodeQuestion(s);el.replaceChildren();if(!c){el.textContent=s;return;}const prompt=document.createElement('div');prompt.textContent=c.prompt;el.appendChild(prompt);const label=document.createElement('small');label.className='code-label';label.textContent=c.lang||'code';el.appendChild(label);const pre=document.createElement('pre');pre.className='code-panel';pre.dir='ltr';const code=document.createElement('code');code.textContent=c.code;pre.appendChild(code);el.appendChild(pre);}
+
 const SUPA_URL = 'https://vgvkbsnpdpgybtsfwted.supabase.co';
 const SUPA_KEY = 'sb_publishable_v3QgxU-WmX2vOPmIr1vJZw_qaGTHVvg';
 const GENQ_URL = SUPA_URL + '/functions/v1/genq';
@@ -178,7 +185,7 @@ let mode = 'login', user = null, qCount = 0, buildMode = 'file', fileText = '';
 
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-const TYPE_NAMES = { mcq: 'اختيار من متعدد', tf: 'صح/خطأ', fill: 'أكمل', order: 'ترتيب', match: 'توصيل' };
+const TYPE_NAMES = { code_error:'اكتشف الخطأ في الكود', mcq: 'اختيار من متعدد', tf: 'صح/خطأ', fill: 'أكمل', order: 'ترتيب', match: 'توصيل' };
 
 function setMode(m) {
   mode = m;
@@ -277,11 +284,12 @@ async function generate() {
 function addQuestion(gen) {
   qCount++;
   const n = qCount;
-  const type = gen && gen.type ? gen.type : 'mcq';
+  const parsed=splitCodeQuestion(gen?.q);const isCode=gen?.type==='code_error'||!!parsed;const type=isCode?'mcq':(gen?.type||'mcq');
   const div = document.createElement('div');
-  div.className = 'qrow'; div.id = 'q' + n; div.dataset.type = type;
+  div.className = 'qrow'; div.id = 'q' + n; div.dataset.type = type;div.dataset.code=isCode?'1':'';
   let inner = '<h4>سؤال ' + n + (gen && gen.type ? '<span class="qtype">' + (TYPE_NAMES[gen.type] || '') + '</span>' : '') + '<button class="del" onclick="document.getElementById(\'q' + n + '\').remove()">مسح ✕</button></h4>'
     + '<label>نص السؤال</label><input type="text" dir="auto" style="text-align:start" class="qq" placeholder="اكتب السؤال">';
+  if(isCode)inner+='<div class="code-fields"><label>لغة الكود (اختياري)</label><input type="text" class="code-language" value="python" dir="ltr"><label>الكود كما سيظهر، بدون تشغيل. حافظ على المسافات والأسطر.</label><textarea class="code-source" rows="6" dir="ltr" spellcheck="false"></textarea><p class="muted">اكتب السياق والهدف في نص السؤال، وحدد خطأ واحدًا واضحًا وإجابة صحيحة واحدة.</p></div>';
   if (type === 'fill') {
     inner += '<label>الإجابة الصحيحة (سيكتبها الطالب بنفسه)</label><input type="text" dir="auto" style="text-align:start" class="qf" placeholder="الكلمة أو المعلومة الناقصة">';
   } else if (type === 'match') {
@@ -299,7 +307,7 @@ function addQuestion(gen) {
   inner += '<label>شرح الإجابة</label><input type="text" dir="auto" style="text-align:start" class="qe" placeholder="لماذا هذه هي الإجابة الصحيحة؟">';
   div.innerHTML = inner;
   document.getElementById('qlist').appendChild(div);
-  div.querySelector('.qq').value = gen ? gen.q : '';
+  div.querySelector('.qq').value = parsed?parsed.prompt:(gen?.q||'');if(isCode){div.querySelector('.code-source').value=parsed?parsed.code:(gen?.code||'');div.querySelector('.code-language').value=parsed?parsed.lang:(gen?.code_language||'python');}
   if (type === 'fill') {
     const ans = gen && gen.o ? (gen.o[gen.a] || '') : '';
     div.querySelector('.qf').value = ans;
@@ -327,8 +335,8 @@ async function saveQuiz() {
     const box = document.getElementById('q' + i);
     if (!box) continue;
     const type = box.dataset.type || 'mcq';
-    const q = box.querySelector('.qq').value.trim();
-    const e = box.querySelector('.qe').value.trim();
+    let q = box.querySelector('.qq').value.trim();
+    const e = box.querySelector('.qe').value.trim();if(box.dataset.code==='1'){const code=box.querySelector('.code-source').value.replace(/\r/g,'');if(!q||!code.trim()||code.length>12000||code.includes('```')||!e)return showErr('buildErr','أكمل السؤال والكود وشرح التصحيح.');q=joinCodeQuestion(q,box.querySelector('.code-language').value,code);}
     if (type === 'fill') {
       const ans = box.querySelector('.qf').value.trim();
       if (!q || !ans) return showErr('buildErr', 'أكمل نص سؤال «أكمل» وإجابته الصحيحة.');
