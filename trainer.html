@@ -281,22 +281,22 @@ function addQuestion(gen) {
   const div = document.createElement('div');
   div.className = 'qrow'; div.id = 'q' + n; div.dataset.type = type;
   let inner = '<h4>سؤال ' + n + (gen && gen.type ? '<span class="qtype">' + (TYPE_NAMES[gen.type] || '') + '</span>' : '') + '<button class="del" onclick="document.getElementById(\'q' + n + '\').remove()">مسح ✕</button></h4>'
-    + '<label>نص السؤال</label><input type="text" class="qq" placeholder="اكتب السؤال">';
+    + '<label>نص السؤال</label><input type="text" dir="auto" style="text-align:start" class="qq" placeholder="اكتب السؤال">';
   if (type === 'fill') {
-    inner += '<label>الإجابة الصحيحة (سيكتبها الطالب بنفسه)</label><input type="text" class="qf" placeholder="الكلمة أو المعلومة الناقصة">';
+    inner += '<label>الإجابة الصحيحة (سيكتبها الطالب بنفسه)</label><input type="text" dir="auto" style="text-align:start" class="qf" placeholder="الكلمة أو المعلومة الناقصة">';
   } else if (type === 'match') {
     inner += '<label>أزواج التوصيل — كل عنصر ومقابله الصحيح</label>'
-      + [0, 1, 2, 3].map(k => '<div class="pair-line"><input type="text" class="ql" placeholder="عنصر ' + (k + 1) + '"><span class="pair-arrow">يُقابِل</span><input type="text" class="qr" placeholder="المقابل ' + (k + 1) + '"></div>').join('');
+      + [0, 1, 2, 3].map(k => '<div class="pair-line"><input type="text" dir="auto" style="text-align:start" class="ql" placeholder="عنصر ' + (k + 1) + '"><span class="pair-arrow">يُقابِل</span><input type="text" dir="auto" style="text-align:start" class="qr" placeholder="المقابل ' + (k + 1) + '"></div>').join('');
   } else if (type === 'order') {
     inner += '<label>الخطوات بالترتيب الصحيح (تُخلط تلقائيًا للطالب)</label>'
-      + [0, 1, 2, 3, 4, 5].map(k => '<div class="pair-line"><span class="ord-num">' + (k + 1) + '.</span><input type="text" class="qi" placeholder="الخطوة ' + (k + 1) + '"></div>').join('');
+      + [0, 1, 2, 3, 4, 5].map(k => '<div class="pair-line"><span class="ord-num">' + (k + 1) + '.</span><input type="text" dir="auto" style="text-align:start" class="qi" placeholder="الخطوة ' + (k + 1) + '"></div>').join('');
   } else {
     const opts0 = gen ? gen.o : ['', '', '', ''];
     const ansr = gen ? gen.a : 0;
     inner += '<label>الاختيارات (حدد الصحيحة بعلامة الدائرة — اختيارين على الأقل)</label>'
-      + [0, 1, 2, 3].map(i => '<div class="opt-line"><input type="radio" name="c' + n + '" value="' + i + '"' + (i === ansr ? ' checked' : '') + '><input type="text" class="qo" placeholder="اختيار ' + (i + 1) + '"' + (opts0[i] !== undefined ? '' : ' style="display:none"') + '></div>').join('');
+      + [0, 1, 2, 3].map(i => '<div class="opt-line"><input type="radio" name="c' + n + '" value="' + i + '"' + (i === ansr ? ' checked' : '') + '><input type="text" dir="auto" style="text-align:start" class="qo" placeholder="اختيار ' + (i + 1) + '"' + (opts0[i] !== undefined ? '' : ' style="display:none"') + '></div>').join('');
   }
-  inner += '<label>شرح الإجابة</label><input type="text" class="qe" placeholder="لماذا هذه هي الإجابة الصحيحة؟">';
+  inner += '<label>شرح الإجابة</label><input type="text" dir="auto" style="text-align:start" class="qe" placeholder="لماذا هذه هي الإجابة الصحيحة؟">';
   div.innerHTML = inner;
   document.getElementById('qlist').appendChild(div);
   div.querySelector('.qq').value = gen ? gen.q : '';
