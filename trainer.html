@@ -287,7 +287,7 @@ function addQuestion(gen) {
   const parsed=splitCodeQuestion(gen?.q);const isCode=gen?.type==='code_error'||!!parsed;const type=isCode?'mcq':(gen?.type||'mcq');
   const div = document.createElement('div');
   div.className = 'qrow'; div.id = 'q' + n; div.dataset.type = type;div.dataset.code=isCode?'1':'';
-  let inner = '<h4>سؤال ' + n + (gen && gen.type ? '<span class="qtype">' + (TYPE_NAMES[gen.type] || '') + '</span>' : '') + '<button class="del" onclick="document.getElementById(\'q' + n + '\').remove()">مسح ✕</button></h4>'
+  let inner = '<h4>سؤال ' + n + (gen && gen.type ? '<span class="qtype">' + (isCode?'اكتشف الخطأ في الكود':(TYPE_NAMES[gen.type] || '')) + '</span>' : '') + '<button class="del" onclick="document.getElementById(\'q' + n + '\').remove()">مسح ✕</button></h4>'
     + '<label>نص السؤال</label><input type="text" dir="auto" style="text-align:start" class="qq" placeholder="اكتب السؤال">';
   if(isCode)inner+='<div class="code-fields"><label>لغة الكود (اختياري)</label><input type="text" class="code-language" value="python" dir="ltr"><label>الكود كما سيظهر، بدون تشغيل. حافظ على المسافات والأسطر.</label><textarea class="code-source" rows="6" dir="ltr" spellcheck="false"></textarea><p class="muted">اكتب السياق والهدف في نص السؤال، وحدد خطأ واحدًا واضحًا وإجابة صحيحة واحدة.</p></div>';
   if (type === 'fill') {
@@ -353,7 +353,7 @@ async function saveQuiz() {
     } else {
       const oAll = [...box.querySelectorAll('.qo')].map(x => x.value.trim());
       let a = parseInt(box.querySelector('input[name=c' + i + ']:checked').value);
-      const o = oAll.filter(x => x);
+      const o = oAll.filter(x => x);if(box.dataset.code==='1'&&(o.length!==4||new Set(o).size!==4||!oAll[a]))return showErr('buildErr','اكتب أربعة اختيارات مختلفة وحدد الإجابة الصحيحة لسؤال الكود.');
       if (!q || o.length < 2) return showErr('buildErr', 'أكمل نص السؤال واختيارين على الأقل في سؤال من الأسئلة الظاهرة.');
       if (!oAll[a]) { a = o.indexOf(oAll.find(x => x)) >= 0 ? 0 : 0; }
       else { const kept = oAll[a]; a = o.indexOf(kept); }
