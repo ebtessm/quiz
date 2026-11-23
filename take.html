@@ -67,6 +67,8 @@
   .fillin.bad { border-color:var(--red); background:#fbeaea; }
   .confirm { width:100%; margin-top:14px; background:var(--green2); color:#fff; border:0; border-radius:12px; padding:13px; font-size:16px; font-weight:bold; cursor:pointer; font-family:inherit; }
 @media(max-width:540px) { .mrow { flex-direction:column; align-items:stretch; gap:6px; margin-top:14px; } .mrow .ml { padding:9px 12px; } .mrow select { flex:none; } }
+
+.code-panel{direction:ltr;text-align:left;unicode-bidi:isolate;white-space:pre;overflow:auto;max-width:100%;background:#f0f2f8;color:#162437;border:1px solid #d8dfeb;border-radius:12px;padding:14px;font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;margin:8px 0 16px}.code-label{display:block;text-align:left;direction:ltr;color:#596679;font:12px monospace;margin-top:12px}.code-fields textarea{direction:ltr;text-align:left;white-space:pre;font:14px/1.6 monospace;min-height:130px;width:100%}.code-fields[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -117,6 +119,11 @@
 </div>
 
 <script>
+
+function splitCodeQuestion(s){const m=String(s||'').match(/^([\s\S]*?)\n```([a-zA-Z0-9_+#.-]{0,24})\n([\s\S]{1,12000})\n```\s*$/);return m?{prompt:m[1],lang:m[2],code:m[3]}:null;}
+function joinCodeQuestion(prompt,lang,code){return prompt+'\n```'+lang.replace(/[^a-zA-Z0-9_+#.-]/g,'').slice(0,24)+'\n'+code+'\n```';}
+function renderQuestionText(el,s){const c=splitCodeQuestion(s);el.replaceChildren();if(!c){el.textContent=s;return;}const prompt=document.createElement('div');prompt.textContent=c.prompt;el.appendChild(prompt);const label=document.createElement('small');label.className='code-label';label.textContent=c.lang||'code';el.appendChild(label);const pre=document.createElement('pre');pre.className='code-panel';pre.dir='ltr';const code=document.createElement('code');code.textContent=c.code;pre.appendChild(code);el.appendChild(pre);}
+
 const SUPA_URL = 'https://vgvkbsnpdpgybtsfwted.supabase.co';
 const SUPA_KEY = 'sb_publishable_v3QgxU-WmX2vOPmIr1vJZw_qaGTHVvg';
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
@@ -226,7 +233,7 @@ function hud() {
   sp.textContent = '🔥 ×' + streak;
   sp.classList.toggle('zero', streak < 2);
 }
-function qTime(q) { return (q.type === 'match' || q.type === 'order') ? 45 : (q.type === 'fill' ? 30 : QTIME); }
+function qTime(q) { if(splitCodeQuestion(q.q))return 60; return (q.type === 'match' || q.type === 'order') ? 45 : (q.type === 'fill' ? 30 : QTIME); }
 function startTimer() {
   clearInterval(timerId);
   timeLeft = qTime(qs[i]);
@@ -244,7 +251,7 @@ function render() {
   answered = false;
   document.getElementById('counter').textContent = tr('سؤال ', 'Question ') + (i + 1) + tr(' من ', ' of ') + qs.length;
   document.getElementById('prog').style.width = (i / qs.length * 100) + '%';
-  document.getElementById('qtext').textContent = q.q;
+  renderQuestionText(document.getElementById('qtext'),q.q);
   document.getElementById('gain').textContent = '';
   hud();
   const box = document.getElementById('opts');
