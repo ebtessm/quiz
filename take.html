@@ -91,7 +91,7 @@
     </div>
     <div class="meta" style="display:flex;justify-content:space-between;color:#5a6b60;font-size:13px;margin-bottom:10px;"><span id="counter"></span></div>
     <div class="bar"><div id="prog"></div></div>
-    <div class="q" id="qtext"></div>
+    <div class="q" id="qtext" dir="auto" style="text-align:start"></div>
     <div id="opts"></div>
     <div class="gain" id="gain"></div>
     <div class="why" id="why"></div>
@@ -232,8 +232,8 @@ function render() {
       const row = document.createElement('div');
       row.className = 'mrow';
       row.innerHTML = '<div class="ml"></div>';
-      row.querySelector('.ml').textContent = lt;
-      const sel = document.createElement('select');
+      row.querySelector('.ml').dir = 'auto'; row.querySelector('.ml').style.textAlign = 'start'; row.querySelector('.ml').textContent = lt;
+      const sel = document.createElement('select'); sel.dir = 'auto'; sel.style.textAlign = 'start';
       sel.innerHTML = '<option value="">اختر المقابل…</option>' + q._rights.map(r => '<option value="' + r.idx + '"></option>').join('');
       [...sel.querySelectorAll('option')].slice(1).forEach((o, k2) => o.textContent = q._rights[k2].t);
       sel.id = 'msel' + k;
@@ -246,7 +246,7 @@ function render() {
     box.appendChild(cb);
   } else if (q.type === 'fill') {
     const row = document.createElement('div');
-    row.innerHTML = '<input type="text" id="fillIn" class="fillin" placeholder="اكتب الكلمة أو المعلومة الناقصة هنا" autocomplete="off">';
+    row.innerHTML = '<input type="text" dir="auto" style="text-align:start" id="fillIn" class="fillin" placeholder="اكتب الكلمة أو المعلومة الناقصة هنا" autocomplete="off">';
     box.appendChild(row);
     const cb = document.createElement('button');
     cb.className = 'confirm'; cb.textContent = 'تأكيد الإجابة';
@@ -263,7 +263,7 @@ function render() {
   } else {
     q.o.forEach((t, idx) => {
       const b = document.createElement('button');
-      b.className = 'opt'; b.textContent = t;
+      b.className = 'opt'; b.dir = 'auto'; b.style.textAlign = 'start'; b.textContent = t;
       b.onclick = () => answer(idx, b);
       box.appendChild(b);
     });
@@ -314,7 +314,7 @@ function renderOrderList(q, box) {
     const row = document.createElement('div');
     row.className = 'orow';
     row.innerHTML = '<div class="ot"></div><div class="obtns"><button type="button" title="أعلى">▲</button><button type="button" title="أسفل">▼</button></div>';
-    row.querySelector('.ot').textContent = (pos + 1) + '. ' + it.t;
+    row.querySelector('.ot').dir = /[ء-ي]/.test(it.t) ? 'rtl' : 'ltr'; row.querySelector('.ot').style.textAlign = 'start'; row.querySelector('.ot').textContent = (pos + 1) + '. ' + it.t;
     const [up, dn] = row.querySelectorAll('button');
     up.onclick = () => { if (pos > 0) { const t = q._disp[pos - 1]; q._disp[pos - 1] = q._disp[pos]; q._disp[pos] = t; renderOrderList(q, box); } };
     dn.onclick = () => { if (pos < q._disp.length - 1) { const t = q._disp[pos + 1]; q._disp[pos + 1] = q._disp[pos]; q._disp[pos] = t; renderOrderList(q, box); } };
