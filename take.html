@@ -110,7 +110,7 @@
       <div class="stat"><b id="rtime"></b><span>الوقت</span></div>
     </div>
     <div class="score-sub" id="scoremsg"></div>
-    <p class="muted">تم إرسال نتيجتك لمدربك. شكرًا لك 🎯</p>
+    <p class="muted" id="saveStatus" role="status" aria-live="polite"></p>
   </div>
 
   <div class="card" id="bad" style="display:none;">
@@ -456,7 +456,16 @@ async function next() {
   document.getElementById('scoremsg').textContent = m;
   show('result');
   sFinish();
-  await supa.from('attempts').insert({ quiz_id: quizId, student_name: student, score: correct, total: qs.length, seconds });
+  const status = document.getElementById('saveStatus');
+  status.textContent = tr('جاري حفظ نتيجتك للمدرب...', 'Saving your result for your trainer...');
+  try {
+    const saved = await supa.from('attempts').insert({ quiz_id: quizId, student_name: student, score: correct, total: qs.length, seconds });
+    if (saved.error) throw new Error('save failed');
+    status.textContent = tr('تم حفظ نتيجتك لمدربك. شكرًا لك 🎯', 'Your result was saved for your trainer. Thank you 🎯');
+  } catch (e) {
+    status.textContent = tr('لم يتأكد حفظ نتيجتك للمدرب. احتفظ بصورة للشاشة وتواصل معه قبل إعادة الاختبار، فقد يكون الطلب وصل رغم انقطاع الرد.', 'Saving your result could not be confirmed. Keep a screenshot and contact your trainer before retaking the test, as the request may have arrived despite a lost response.');
+    status.style.color = '#b3392b';
+  }
 }
 load();
 </script>
