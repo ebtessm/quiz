@@ -104,6 +104,9 @@
       <button class="btn2" id="genBtn" onclick="generate()">⚡ ولّد الأسئلة تلقائيًا</button>
       <div class="spin" id="genSpin">⏳ بنقرأ الملف وبنولّد الأسئلة... ممكن ياخد حتى دقيقة</div>
       <div class="err" id="genErr"></div>
+      <label for="genLanguage">لغة الأسئلة</label>
+      <select id="genLanguage" style="width:100%;padding:12px;border:2px solid #dce9e0;border-radius:12px;font:inherit;background:#f6fbf8"><option value="auto">تلقائي حسب لغة الملف</option><option value="en">English</option><option value="ar">العربية</option></select>
+      <p class="muted">للملفات المختلطة، اختاري اللغة المطلوبة. الاختيار يغيّر الأسئلة وليس لغة الواجهة.</p>
       <p class="muted" style="margin-top:10px;">التوليد بيغطي كل أنواع الأسئلة اللي المحتوى يسمح بيها: اختيار من متعدد، صح/خطأ، أكمل، ترتيب، توصيل. راجع الأسئلة تحت وعدّل أو امسح اللي مش عاجبك قبل الحفظ.</p>
     </div>
 
@@ -259,7 +262,7 @@ async function generate() {
     const r = await fetch(GENQ_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
-      body: JSON.stringify({ text: fileText, count: n }),
+      body: JSON.stringify({ text: fileText, count: n, language: document.getElementById("genLanguage").value }),
     });
     const j = await r.json();
     if (!r.ok || j.error) throw new Error(j.error || 'تعذر التوليد.');
