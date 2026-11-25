@@ -117,7 +117,7 @@
       <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="filePicked(this)">
       <label>عدد الأسئلة المطلوب</label>
       <input type="number" id="qWant" value="10" min="3" max="30">
-      <button class="btn2" id="genBtn" onclick="generate()">⚡ إرسال النص وتوليد الأسئلة</button>
+      <button class="btn2" id="genBtn" onclick="generate()">⚡ توليد أسئلة وإضافتها للموجود</button>
       <div class="spin" id="genSpin">⏳ بنقرأ الملف وبنولّد الأسئلة... ممكن ياخد حتى دقيقة</div>
       <div id="genStatus" class="muted" style="display:none;margin-top:10px;font-weight:bold"></div>
       <button class="btn2" id="genCancelBtn" style="display:none;margin-top:8px;background:#fff;color:#a33;border:2px solid #a33" onclick="genCancelNow()">⏹ إيقاف بعد الجزء الحالي</button>
@@ -329,6 +329,14 @@ function genPlan(text, n, sel) {
   return { ok: false, reason: 'count_too_low', lang, minQuestions: Math.min(3 * need, 999) };
 }
 function genNorm(s) { return String(s || '').toLowerCase().replace(/[ً-ْـ]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
+function genTok(k) { return new Set(k.split(' ').filter(w => w.length > 1)); }
+function genIsDup(key, seen) {
+  if (!key) return false; if (seen.has(key)) return true;
+  const a = genTok(key); if (a.size < 4) return false;
+  for (const s of seen) { const b = genTok(s); if (b.size < 4) continue; let i = 0; for (const w of a) if (b.has(w)) i++; if (i / (a.size + b.size - i) >= 0.8) return true; }
+  return false;
+}
+function genExistingStems() { return [...document.querySelectorAll('#qlist .qrow .qq')].map(e => e.value.trim()).filter(Boolean); }
 function genWaitSeconds(prevLen, prevK, nextLen, nextK, lang) {
   const ctp = lang === 'en' ? 4.2 : 3.0;
   const est = (len, k) => Math.ceil((len + 4000) / ctp) + k * 170 + 500;
@@ -356,7 +364,7 @@ async function genRun(plan, deps, only) {
       let k = 0;
       for (const q of j.questions) {
         const key = genNorm(q && q.q);
-        if (key && st.seen.has(key)) continue;
+        if (key && genIsDup(key, st.seen)) continue;
         st.seen.add(key); deps.add(q); k++;
       }
       st.added += k; st.done.push({ part: i, got: j.questions.length, added: k });
@@ -370,7 +378,7 @@ async function genRun(plan, deps, only) {
   return st;
 }
 
-let genCancel = false, genLastPlan = null, genSeen = new Set();
+let genCancel = false, genLastPlan = null, genSeen = new Set(), genAvoid = [];
 function genCancelNow() { genCancel = true; document.getElementById('genCancelBtn').disabled = true; document.getElementById('genStatus').textContent = 'هنوقف بعد الجزء الحالي…'; }
 function genSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function generate(only) {
@@ -387,7 +395,7 @@ async function generate(only) {
         ? 'النص أطول من ٣٠ ألف حرف. قسّمي الملف.'
         : 'النص طويل على العدد ده. زوّدي عدد الأسئلة لـ ' + plan.minQuestions + ' على الأقل أو قلّلي حجم الملف. مفيش حاجة اتبعتت.');
     }
-    genLastPlan = plan; genSeen = new Set();
+    genLastPlan = plan; const stems = genExistingStems(); genAvoid = stems.slice(-60).map(s => s.slice(0, 140)); genSeen = new Set(stems.map(genNorm).filter(Boolean));
   }
   genCancel = false; btn.disabled = true; cb.disabled = false; cb.style.display = ''; st.style.display = 'block';
   document.getElementById('genSpin').classList.add('show');
@@ -396,7 +404,7 @@ async function generate(only) {
     seen: genSeen,
     cancelled: () => genCancel,
     sleep: genSleep,
-    fetch: (text, count) => fetch(GENQ_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY }, body: JSON.stringify({ text, count, language: plan.lang }) }),
+    fetch: (text, count) => fetch(GENQ_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY }, body: JSON.stringify({ text, count, language: plan.lang, avoid: genAvoid }) }),
     add: q => addQuestion(q),
     onWait: (w) => { st.textContent = 'بنستنى ' + w + ' ثانية قبل الجزء الجاي عشان حد الاستخدام…'; },
     onPart: (i, m) => { st.textContent = 'الجزء ' + (i + 1) + ' من ' + m + ' — جاري التوليد'; },
