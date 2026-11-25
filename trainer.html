@@ -117,7 +117,6 @@
       <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="filePicked(this)">
       <label>عدد الأسئلة المطلوب</label>
       <input type="number" id="qWant" value="10" min="3" max="30">
-      <div class="notice" id="genNotice" style="background:#fff8e6;border:1px solid #f0d58a;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px;line-height:1.8;color:#5a4300;"><b>التوليد بيستخدم خدمة Groq الخارجية لمعالجة النص.</b> ما ترفعيش بيانات شخصية أو سرية. بالضغط على زر التوليد، هيتبعت النص للخدمة. راجعي الأسئلة والإجابات قبل استخدامها.<br><span style="font-size:13px">التوليد مجاني ضمن حدود استخدام. حجم النص المسموح يعتمد على عدد الأسئلة، وقد تحتاجي للانتظار عند نفاد الحصة.<br>الملفات الطويلة بتتبعت لخدمة Groq على أجزاء متتالية.</span></div>
       <button class="btn2" id="genBtn" onclick="generate()">⚡ إرسال النص وتوليد الأسئلة</button>
       <div class="spin" id="genSpin">⏳ بنقرأ الملف وبنولّد الأسئلة... ممكن ياخد حتى دقيقة</div>
       <div id="genStatus" class="muted" style="display:none;margin-top:10px;font-weight:bold"></div>
