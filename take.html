@@ -233,7 +233,8 @@ function hud() {
   sp.textContent = '🔥 ×' + streak;
   sp.classList.toggle('zero', streak < 2);
 }
-function qTime(q) { if(splitCodeQuestion(q.q))return 60; return (q.type === 'match' || q.type === 'order') ? 45 : (q.type === 'fill' ? 30 : QTIME); }
+var TIME_FACTOR = (quizId === 'a27a914a-c631-4924-957e-eaad42c6165f') ? 2 : 1;
+function qTime(q) { const base = splitCodeQuestion(q.q) ? 60 : ((q.type === 'match' || q.type === 'order') ? 45 : (q.type === 'fill' ? 30 : QTIME)); return base * TIME_FACTOR; }
 function startTimer() {
   clearInterval(timerId);
   timeLeft = qTime(qs[i]);
@@ -316,7 +317,7 @@ function settle(idx, btn, timedOut) {
   let head;
   if (!timedOut && idx === q.a) {
     correct++;
-    const gained = 100 + timeLeft * 5 + streak * 20;
+    const gained = 100 + Math.round(timeLeft / TIME_FACTOR) * 5 + streak * 20;
     points += gained;
     streak++;
     bestStreak = Math.max(bestStreak, streak);
@@ -360,7 +361,7 @@ function finishTyped(ok, correctHtml) {
   let head;
   if (ok) {
     correct++;
-    const gained = 100 + timeLeft * 5 + streak * 20;
+    const gained = 100 + Math.round(timeLeft / TIME_FACTOR) * 5 + streak * 20;
     points += gained;
     streak++;
     bestStreak = Math.max(bestStreak, streak);
