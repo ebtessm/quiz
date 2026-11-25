@@ -534,6 +534,21 @@ async function loadDashboard() {
     r.data.forEach(q => {
       const d = safeNode('div'); d.className = 'quiz-item'; d.style.cursor = 'pointer';
       d.append(safeNode('b', q.title), safeNode('span', ' · ' + new Date(q.created_at).toLocaleDateString('ar-EG'), 'muted'), safeNode('div', 'اضغط لعرض نتائج الطلاب', 'muted'));
+      if ('is_open' in q) {
+        const open = q.is_open !== false;
+        const row = safeNode('div'); row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap';
+        const badge = safeNode('span', open ? '🟢 الرابط مفتوح' : '⏸️ الرابط متوقف'); badge.style.cssText = 'font-weight:700;font-size:14px;color:' + (open ? '#0b5830' : '#c81e1e');
+        const btn = safeNode('button', open ? 'إيقاف الرابط' : 'تفعيل الرابط'); btn.type = 'button'; btn.className = 'btn2'; btn.style.cssText = 'width:auto;padding:8px 16px;margin:0';
+        btn.onclick = async (ev) => {
+          ev.stopPropagation();
+          if (open && !confirm('إيقاف الرابط يمنع دخول مشاركين جدد. اللي بدأوا بالفعل يكمّلوا. تأكيد؟')) return;
+          btn.disabled = true;
+          const u = await supa.from('quizzes').update({ is_open: !open }).eq('id', q.id).select();
+          if (u.error || !u.data || !u.data.length) { btn.disabled = false; badge.textContent = 'تعذر تغيير الحالة. لم يتغير شيء.'; badge.style.color = '#c81e1e'; return; }
+          loadDashboard();
+        };
+        row.append(badge, btn); d.append(row);
+      }
       d.onclick = () => loadAttempts(q); box.append(d);
     });
   } catch (e) { box.replaceChildren(safeNode('p', 'تعذر تحميل الاختبارات. أعد المحاولة، هذا لا يعني عدم وجود اختبارات.', 'err')); }
