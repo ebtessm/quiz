@@ -91,14 +91,25 @@
   </div>
 
   <div class="card" id="ownerExport" style="display:none;">
-    <h3 style="color:var(--green)">ردود الاستبيان 📊</h3>
+    <h3 style="color:var(--green)">ملفات Excel 📊</h3>
     <p class="muted">تحميل ردود الاستبيان والمشتركين في ملف Excel — متاح لحساب المالكة فقط.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
     <button class="btn" onclick="exportSurvey()">⬇️ تحميل الاستبيان (Excel)</button>
+    <span id="resExport"><button class="btn" type="button" onclick="exportResults(null)">⬇️ تحميل نتائج الاختبارات (Excel)</button></span>
+    </div>
+    <div class="muted" id="resMsg" style="margin-top:8px;color:var(--green);font-weight:bold;" role="status"></div>
+    <div class="err" id="resErr"></div>
     <div class="muted" id="expMsg" style="margin-top:8px;color:var(--green);font-weight:bold;"></div>
     <div class="err" id="expErr"></div>
   </div>
 
-  <div class="card" id="builder" style="display:none;">
+  <section id="qrOwner" class="card" style="display:none">
+<h3>تسجيلات المشاركين</h3><p>بيانات خاصة بالمالكة. الحذف يدوي فقط، وموافقة الأخبار منفصلة عن التسجيل. البيانات كما كتبها المشارك وغير متحقق منها.</p>
+<button type="button" class="btn" onclick="qrLoadOwner()">تحميل أحدث التسجيلات</button>
+<input id="qrOwnerSearch" type="search" dir="ltr" placeholder="ابحثي بالإيميل أو الاسم" oninput="qrSearchOwner()" style="width:100%;margin:8px 0;padding:10px">
+<button type="button" class="btn2" id="qrOwnerCsv" onclick="qrExportOwner()" disabled>تصدير المعروض CSV</button>
+<p id="qrOwnerStatus" role="status" aria-live="polite"></p><div id="qrOwnerList"></div></section>
+<div class="card" id="builder" style="display:none;">
     <h3 style="color:var(--green)">إنشاء اختبار جديد</h3>
     <label>عنوان الاختبار</label>
     <input type="text" id="quizTitle" placeholder="مثال: مراجعة الوحدة الثالثة">
@@ -242,7 +253,7 @@ function enter(u) {
   document.getElementById('builder').style.display = '';
   document.getElementById('dash').style.display = '';
   document.getElementById('signoutBox').style.display = '';
-  if (u.id === OWNER_UID) document.getElementById('ownerExport').style.display = '';
+  if (u.id === OWNER_UID) { document.getElementById('ownerExport').style.display = ''; document.getElementById('qrOwner').style.display = ''; }
   setBuild('file');
   loadDashboard();
 }
@@ -553,6 +564,64 @@ async function loadDashboard() {
     });
   } catch (e) { box.replaceChildren(safeNode('p', 'تعذر تحميل الاختبارات. أعد المحاولة، هذا لا يعني عدم وجود اختبارات.', 'err')); }
 }
+function resRows(atts, titles, regs) {
+  return atts.map(a => ({
+    'الاختبار': safeCell(titles[a.quiz_id] || ''),
+    'الاسم': safeCell(a.student_name || ''),
+    'الإيميل (كتبه المشارك)': safeCell((regs && a.registration_id && regs[a.registration_id]) ? regs[a.registration_id].contact_value : ''),
+    'الحالة': 'أكمل',
+    'الإجابات الصحيحة': a.score,
+    'عدد الأسئلة': a.total,
+    'النسبة %': a.total ? Math.round(a.score / a.total * 100) : '',
+    'الوقت (ثانية)': a.seconds != null ? a.seconds : '',
+    'التاريخ': a.created_at ? new Date(a.created_at).toLocaleString('ar-EG') : ''
+  }));
+}
+async function exportResults(quizId, quizTitle) {
+  const msg = document.getElementById(quizId ? 'resMsgOne' : 'resMsg'), err = document.getElementById('resErr'); err.style.display = 'none';
+  if (msg) msg.textContent = '⏳ بنجهز الملف...';
+  try {
+    const qr = await supa.from('quizzes').select('id,title').order('created_at', { ascending: false });
+    if (qr.error) throw new Error(qr.error.message);
+    const titles = {}; (qr.data || []).forEach(x => { titles[x.id] = x.title; });
+    let aq = supa.from('attempts').select('*').order('created_at', { ascending: false });
+    if (quizId) aq = aq.eq('quiz_id', quizId);
+    const ar = await aq;
+    if (ar.error) throw new Error(ar.error.message);
+    const atts = ar.data || [];
+    let regList = [], regOk = true, regs = {};
+    if (user && user.id === OWNER_UID) {
+      let rq = supa.from('quiz_registrations').select('id,created_at,display_name,contact_value,source_ref').eq('source_kind', 'shared').order('created_at', { ascending: false }).limit(1000);
+      if (quizId) rq = rq.eq('source_ref', String(quizId));
+      const rr = await rq;
+      if (rr.error) regOk = false; else { regList = rr.data || []; regList.forEach(x => { regs[x.id] = x; }); }
+    }
+    const doneIds = new Set(atts.map(a => a.registration_id).filter(Boolean));
+    const unfinished = regList.filter(x => !doneIds.has(x.id));
+    const names = new Set(atts.map(a => String(a.student_name || '').trim().toLowerCase()));
+    const per = {};
+    atts.forEach(a => { const p = per[a.quiz_id] = per[a.quiz_id] || { n: 0, names: new Set() }; p.n++; p.names.add(String(a.student_name || '').trim().toLowerCase()); });
+    unfinished.forEach(x => { const p = per[x.source_ref] = per[x.source_ref] || { n: 0, names: new Set() }; p.u = (p.u || 0) + 1; });
+    const sumRows = Object.keys(per).map(id => ({ 'الاختبار': safeCell(titles[id] || ''), 'عدد المحاولات المكتملة': per[id].n, 'عدد الأسماء المختلفة (المكتملة)': per[id].names.size, 'بدأوا ولا توجد نتيجتهم بعد': regOk ? (per[id].u || 0) : 'غير متاح' }));
+    const wb = XLSX.utils.book_new();
+    wb.Workbook = { Views: [{ RTL: true }] };
+    const ws0 = XLSX.utils.json_to_sheet(sumRows.length ? sumRows : [{ 'الاختبار': 'لا توجد نتائج بعد' }]);
+    ws0['!cols'] = [{ wch: 34 }, { wch: 22 }, { wch: 28 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws0, 'ملخص');
+    const rows = resRows(atts, titles, regs).concat(unfinished.map(x => ({
+      'الاختبار': safeCell(titles[x.source_ref] || ''), 'الاسم': safeCell(x.display_name || ''), 'الإيميل (كتبه المشارك)': safeCell(x.contact_value || ''),
+      'الحالة': 'لا توجد نتيجة بعد (بدأ، وقد يكون لا يزال يحل أو غادر)', 'الإجابات الصحيحة': '', 'عدد الأسئلة': '', 'النسبة %': '', 'الوقت (ثانية)': '',
+      'التاريخ': x.created_at ? new Date(x.created_at).toLocaleString('ar-EG') : '' })));
+    const ws1 = XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'الاسم': 'لا توجد نتائج بعد' }]);
+    ws1['!cols'] = [{ wch: 30 }, { wch: 24 }, { wch: 30 }, { wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 22 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'النتائج');
+    XLSX.writeFile(wb, quizId ? 'نتائج-اختبار.xlsx' : 'نتائج-الاختبارات.xlsx');
+    if (msg) msg.textContent = '✅ تم التنزيل';
+  } catch (e) {
+    if (msg) msg.textContent = '';
+    showErr('resErr', 'تعذر التحميل: ' + e.message);
+  }
+}
 async function loadAttempts(q) {
   const box = document.getElementById('attempts');
   const link = new URL('take.html', location.href); link.searchParams.set('quiz', String(q.id));
@@ -562,6 +631,11 @@ async function loadAttempts(q) {
     const r = await supa.from('attempts').select('*').eq('quiz_id', q.id).order('created_at', { ascending: false });
     if (r.error) throw new Error('load failed');
     box.lastChild.remove();
+    if (user && user.id === OWNER_UID) {
+      const rg = await supa.from('quiz_registrations').select('id').eq('source_kind', 'shared').eq('source_ref', String(q.id)).limit(1000);
+      if (!rg.error) { const done = new Set((r.data || []).map(a => a.registration_id).filter(Boolean)); const started = (rg.data || []).length, un = (rg.data || []).filter(x => !done.has(x.id)).length;
+        const sl = safeNode('p', 'سجّلوا قبل البدء: ' + started + ' · أكملوا: ' + (started - un) + ' · بدأوا ولا توجد نتيجتهم بعد: ' + un + ' (التسجيل بدأ من إصدار التسجيل فقط، وأي دخول قبله لا يمكن استرجاعه)', 'muted'); box.append(sl); }
+    }
     if (!r.data || !r.data.length) box.append(safeNode('p', 'لم تُسجّل نتائج مكتملة بعد.', 'muted'));
     else {
       const atts = r.data;
@@ -581,7 +655,11 @@ async function loadAttempts(q) {
         [medals[idx] || (idx + 1), a.student_name, a.score + ' من ' + a.total, a.seconds ? a.seconds + ' ث' : '—', new Date(a.created_at).toLocaleString('ar-EG')].forEach(x => { const cell = safeNode('td', x); cell.style.overflowWrap = 'anywhere'; row.append(cell); });
         table.append(row);
       });
-      box.append(cards, heading, table);
+      const nm = new Set(atts.map(a => String(a.student_name || '').trim().toLowerCase())).size;
+      const count = safeNode('p', 'المحاولات المكتملة: ' + atts.length + ' · الأسماء المختلفة: ' + nm + ' (الاسم الواحد ممكن يتكرر، فده مش عدد أشخاص مؤكد. من دخل قبل تفعيل التسجيل ولم يُنهِ لا يظهر هنا)', 'muted'); count.style.marginTop = '12px';
+      const one = safeNode('button', '⬇️ تحميل نتائج هذا الاختبار (Excel)'); one.type = 'button'; one.className = 'btn'; one.onclick = () => exportResults(q.id, q.title);
+      const oneMsg = safeNode('div'); oneMsg.id = 'resMsgOne'; oneMsg.className = 'muted'; oneMsg.setAttribute('role', 'status'); oneMsg.style.cssText = 'margin-top:8px;color:var(--green);font-weight:bold';
+      box.append(count, one, oneMsg, cards, heading, table);
     }
   } catch (e) { const message = safeNode('p', 'تعذر تحميل النتائج. أعد المحاولة، هذا لا يعني أن أحدًا لم يشارك.', 'err'); box.replaceChildren(title, safeNode('div', link.href, 'linkbox'), message); }
   box.scrollIntoView({ behavior: 'smooth' });
@@ -599,7 +677,7 @@ async function requestRecovery() {
   finally { setTimeout(() => { button.disabled = false; }, 60000); }
 }
 function showRecovery() {
-  ['auth','builder','dash','ownerExport','signoutBox'].forEach(id => document.getElementById(id).style.display='none');
+  ['auth','builder','dash','ownerExport','signoutBox','qrOwner'].forEach(id => document.getElementById(id).style.display='none');
   document.getElementById('recoverCard').style.display='';
   document.getElementById('recoverSubmit').disabled=!recoveryVerified;
   document.getElementById('recoverStatus').textContent = recoveryVerified ? 'رابط الاسترجاع صالح. اختَر كلمة مرور جديدة.' : 'جاري التحقق من رابط الاسترجاع. لو الرابط منتهي أو غير صالح، ارجع للدخول واطلب رابطًا جديدًا. لا تكفي علامة recovery في العنوان لتغيير كلمة المرور.';
@@ -633,5 +711,64 @@ document.getElementById('recoverForm').addEventListener('submit', async event =>
 })();
 </script>
 <footer style="text-align:center;color:#8a9a90;font-size:13px;margin:30px 0 20px;">تحدي 🎯 · Quizora — اتعلم وانت بتلعب<br><span dir="ltr">Powered by Ebtessam Desouky</span></footer>
-</body>
+<script>
+// Local draft, not published. Uses server-enforced owner policies, never client filtering as authorization.
+let qrOwnerQuery='',qrOwnerRows=[],qrOwnerResults={},qrResultsOk=true;
+function qrOwnerMessage(message){document.getElementById('qrOwnerStatus').textContent=message;}
+async function qrLoadOwner(){
+ if(!user||user.id!==OWNER_UID)return;
+ const target=document.getElementById('qrOwnerList');target.replaceChildren();qrOwnerRows=[];
+ document.getElementById('qrOwnerCsv').disabled=true;qrOwnerMessage('جاري التحميل...');
+ try{
+ const result=await supa.from('quiz_registrations').select('id,created_at,display_name,contact_type,contact_value,news_consent,notice_version,source_kind,source_ref,test_label').order('created_at',{ascending:false}).limit(1000);
+ if(result.error)throw Error('read');qrOwnerRows=result.data||[];
+ qrOwnerResults={};qrResultsOk=true;
+ try{const at=await supa.from('attempts').select('registration_id,score,total,seconds,created_at').not('registration_id','is',null).limit(1000);if(at.error)throw Error('attempts');(at.data||[]).forEach(a=>{qrOwnerResults[a.registration_id]=a});}catch(e){qrResultsOk=false;}
+ qrRenderOwner();
+ }catch(error){qrOwnerMessage('تعذر تحميل التسجيلات. ده مش معناه إن مفيش تسجيلات. جرّبي التحميل مرة ثانية.');}
+}
+function qrResultText(row){
+ if(row.source_kind!=='shared')return 'نتيجة غير محفوظة لهذا النوع من الاختبارات';
+ if(!qrResultsOk)return 'تعذر تحميل النتائج';
+ const a=qrOwnerResults[row.id];
+ return a?('النتيجة: '+a.score+' من '+a.total+(a.seconds?' في '+a.seconds+' ث':'')):'لا توجد نتيجة مكتملة ظاهرة لك';
+}
+function qrRenderOwner(){
+ const target=document.getElementById('qrOwnerList');target.replaceChildren();
+ const shown=qrOwnerRows.filter(r=>!qrOwnerQuery||(r.contact_value||'').includes(qrOwnerQuery)||(r.display_name||'').toLowerCase().includes(qrOwnerQuery));
+ shown.forEach(row=>{
+ const card=document.createElement('article');card.style.cssText='border:1px solid #68748a;border-radius:12px;padding:12px;margin:12px 0;overflow-wrap:anywhere';
+ const title=document.createElement('h4');title.textContent=row.display_name;card.append(title);
+ const details=document.createElement('p');details.textContent='إيميل (كتبه المشارك، غير متحقق منه): '+row.contact_value+' | '+row.test_label+' | '+new Date(row.created_at).toLocaleString('ar-EG');card.append(details);
+ const result=document.createElement('p');result.textContent=qrResultText(row);card.append(result);
+ const consent=document.createElement('p');consent.textContent='أخبار وعروض: '+(row.news_consent?'موافق':'غير موافق')+' | البيانات كما كتبها المشارك، غير متحقق منها.';card.append(consent);
+ if(row.news_consent){const revoke=document.createElement('button');revoke.type='button';revoke.className='btn2';revoke.textContent='إلغاء موافقة الأخبار';revoke.onclick=()=>qrMutateOwner(row,'revoke',revoke);card.append(revoke);}
+ const remove=document.createElement('button');remove.type='button';remove.className='btn2';remove.textContent='حذف هذا التسجيل';remove.onclick=()=>qrMutateOwner(row,'delete',remove);card.append(remove);target.append(card);
+ });
+ document.getElementById('qrOwnerCsv').disabled=!shown.length;
+ qrOwnerMessage('المعروض: '+shown.length+' من '+qrOwnerRows.length+' تسجيل. الحد الأقصى أحدث 1000 تسجيل. التصدير يشمل المعروض فقط. النتيجة بتظهر فقط للاختبارات المشتركة اللي أنتِ مدرّبتها وأكمل صاحبها الاختبار.');
+}
+async function qrMutateOwner(row,action,button){
+ if(!user||user.id!==OWNER_UID)return;
+ const question=action==='delete'?'حذف تسجيل هذا المشارك نهائيًا؟ الحذف لا يمكن التراجع عنه.':'إلغاء موافقة هذا المشارك على الأخبار والعروض؟';
+ if(!confirm(question))return;button.disabled=true;qrOwnerMessage('جاري حفظ التغيير...');
+ try{
+ let query=supa.from('quiz_registrations');query=action==='delete'?query.delete():query.update({news_consent:false});
+ const result=await query.eq('id',row.id).select('id');
+ if(result.error||!result.data||result.data.length!==1)throw Error('unconfirmed');
+ if(action==='delete')qrOwnerRows=qrOwnerRows.filter(r=>r.id!==row.id);else row.news_consent=false;
+ qrRenderOwner();qrOwnerMessage(action==='delete'?'تم حذف التسجيل المحدد.':'تم إلغاء موافقة الأخبار للتسجيل المحدد.');
+ }catch(error){button.disabled=false;qrOwnerMessage('لم يتأكد حفظ التغيير. أعيدي تحميل القائمة للتحقق قبل أي محاولة ثانية.');}
+}
+function qrSearchOwner(){qrOwnerQuery=document.getElementById('qrOwnerSearch').value.trim().toLowerCase();qrRenderOwner();}
+function qrExportOwner(){
+ if(!user||user.id!==OWNER_UID||!qrOwnerRows.length)return;
+ const rows=[['الاسم','نوع التواصل','وسيلة التواصل','الاختبار','تاريخ التسجيل','أخبار وعروض','المصدر','مرجع المصدر','نسخة الإشعار','النتيجة'],...qrOwnerRows.filter(r=>!qrOwnerQuery||(r.contact_value||'').includes(qrOwnerQuery)||(r.display_name||'').toLowerCase().includes(qrOwnerQuery)).map(r=>[r.display_name,r.contact_type,r.contact_value,r.test_label,r.created_at,r.news_consent?'نعم':'لا',r.source_kind,r.source_ref,r.notice_version,qrResultText(r)])];
+ const cell=value=>'"'+String(safeCell(String(value??''))).replace(/"/g,'""')+'"';
+ const blob=new Blob(['\uFEFF'+rows.map(row=>row.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='quizora-registrations.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ qrOwnerMessage('تم تجهيز CSV للتسجيلات المعروضة فقط. الملف فيه بيانات تواصل خاصة، احفظيه في مكان آمن ولا تشاركيه مع المشاركين.');
+}
+
+</script></body>
 </html>
