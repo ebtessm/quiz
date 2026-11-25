@@ -111,19 +111,20 @@
     <div id="fileMode">
       <div class="drop" onclick="document.getElementById('fileInput').click()">
         <b>ارفع ملف المحتوى العلمي</b>
-        <span class="muted">PDF أو Word (DOCX) أو نص TXT — حتى 10 ميجا. يُستخدم أول 30 ألف حرف من المحتوى.</span>
+        <span class="muted">PDF أو Word (DOCX) أو نص TXT — حتى 10 ميجا. لو النص أكبر من الحد المسموح لعدد الأسئلة هتظهر رسالة بالحد، ومش هيتقص من غير ما تعرفي.</span>
         <div class="muted" id="fileName" style="margin-top:8px;color:var(--green);font-weight:bold;"></div>
       </div>
       <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="filePicked(this)">
       <label>عدد الأسئلة المطلوب</label>
       <input type="number" id="qWant" value="10" min="3" max="30">
-      <button class="btn2" id="genBtn" onclick="generate()">⚡ ولّد الأسئلة تلقائيًا</button>
+      <div class="notice" id="genNotice" style="background:#fff8e6;border:1px solid #f0d58a;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px;line-height:1.8;color:#5a4300;"><b>التوليد بيستخدم خدمة Groq الخارجية لمعالجة النص.</b> ما ترفعيش بيانات شخصية أو سرية. بالضغط على زر التوليد، هيتبعت النص للخدمة. راجعي الأسئلة والإجابات قبل استخدامها.<br><span style="font-size:13px">التوليد مجاني ضمن حدود استخدام. حجم النص المسموح يعتمد على عدد الأسئلة، وقد تحتاجي للانتظار عند نفاد الحصة.</span></div>
+      <button class="btn2" id="genBtn" onclick="generate()">⚡ إرسال النص وتوليد الأسئلة</button>
       <div class="spin" id="genSpin">⏳ بنقرأ الملف وبنولّد الأسئلة... ممكن ياخد حتى دقيقة</div>
       <div class="err" id="genErr"></div>
       <label for="genLanguage">لغة الأسئلة</label>
       <select id="genLanguage" style="width:100%;padding:12px;border:2px solid #dce9e0;border-radius:12px;font:inherit;background:#f6fbf8"><option value="auto">تلقائي حسب لغة الملف</option><option value="en">English</option><option value="ar">العربية</option></select>
       <p class="muted">للملفات المختلطة، اختاري اللغة المطلوبة. الاختيار يغيّر الأسئلة وليس لغة الواجهة.</p>
-      <p class="muted" style="margin-top:10px;">التوليد بيغطي كل أنواع الأسئلة اللي المحتوى يسمح بيها: اختيار من متعدد، صح/خطأ، أكمل، ترتيب، توصيل، واكتشاف أخطاء الكود عندما تحتوي المادة على كود وسياق كافٍ. الكود للعرض فقط ولا يتم تشغيله. راجع الأسئلة تحت وعدّل أو امسح اللي مش عاجبك قبل الحفظ.</p>
+      <p class="muted" style="margin-top:10px;">التوليد بيغطي كل أنواع الأسئلة اللي المحتوى يسمح بيها: اختيار من متعدد، صح/خطأ، أكمل، ترتيب، توصيل. أسئلة اكتشاف الخطأ في الكود بتتضاف يدويًا من «كتابة يدوية». راجع الأسئلة تحت وعدّل أو امسح اللي مش عاجبك قبل الحفظ.</p>
     </div>
 
     <div id="qlist"></div>
