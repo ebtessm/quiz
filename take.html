@@ -224,15 +224,23 @@ async function load() {
   });
   if (!qs.length) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('bad').style.display = ''; }
 }
+let qrStarting=false;
 async function begin() {
-  student = document.getElementById('sname').value.trim();
-  if (!student) { const e = document.getElementById('nameErr'); e.textContent = tr('اكتب اسمك أولًا.', 'Enter your name first.'); e.style.display = 'block'; return; }
-  audio(); // unlock sound on first tap
+  if(qrStarting||!quiz||!qs.length)return;qrStarting=true;
+  try {
   const goBtn = document.querySelector('#nameCard .btn'); if (goBtn) goBtn.disabled = true;
   const chk = await supa.from('quizzes').select('*').eq('id', quizId).single();
   if (goBtn) goBtn.disabled = false;
   if (chk.error || !chk.data) { const e = document.getElementById('nameErr'); e.textContent = tr('تعذر التحقق من حالة الاختبار. حاول مرة أخرى.', 'Could not check the exam status. Please try again.'); e.style.display = 'block'; return; }
   if (chk.data.is_open === false) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('closed').style.display = ''; }
+  const registration=await qrOpen({source_kind:'shared',source_ref:quizId,test_label:String(quiz.title||'اختبار مشترك').slice(0,180)},document.getElementById('sname').value.trim());
+  if(!registration)return;document.getElementById('sname').value=registration.name;window.qrRegistrationId=registration.id;beginRegistered();
+  }finally{qrStarting=false;}
+}
+function beginRegistered() {
+  student = document.getElementById('sname').value.trim();
+  if (!student) { const e = document.getElementById('nameErr'); e.textContent = tr('اكتب اسمك أولًا.', 'Enter your name first.'); e.style.display = 'block'; return; }
+  audio(); // unlock sound on first tap
   t0 = Date.now();
   document.getElementById('nameCard').style.display = 'none';
   show('quiz'); render();
@@ -471,7 +479,7 @@ async function next() {
   const status = document.getElementById('saveStatus');
   status.textContent = tr('جاري حفظ نتيجتك للمدرب...', 'Saving your result for your trainer...');
   try {
-    const saved = await supa.from('attempts').insert({ quiz_id: quizId, student_name: student, score: correct, total: qs.length, seconds });
+    const saved = await supa.from('attempts').insert({ quiz_id: quizId, student_name: student, score: correct, total: qs.length, seconds, registration_id: window.qrRegistrationId });
     if (saved.error) throw new Error('save failed');
     status.textContent = tr('تم حفظ نتيجتك لمدربك. شكرًا لك 🎯', 'Your result was saved for your trainer. Thank you 🎯');
   } catch (e) {
@@ -482,5 +490,59 @@ async function next() {
 load();
 </script>
 <footer>تحدي 🎯 · Quizora — اتعلم وانت بتلعب<br><span dir="ltr">Powered by Ebtessam Desouky</span></footer>
+<style>
+#qrModal{border:0;border-radius:20px;padding:0;max-width:520px;width:calc(100% - 28px);max-height:92vh;overflow:auto;color:#124d36;background:#fff;box-shadow:0 20px 80px #0005;direction:rtl;text-align:right;font-family:inherit}#qrModal::backdrop{background:#0b372abb}#qrForm{padding:24px}#qrModal h2{font-size:24px;margin:0 0 12px}#qrModal label{display:block;margin:12px 0 5px;font-size:16px}#qrModal input:not([type=checkbox]),#qrModal select{box-sizing:border-box;width:100%;padding:12px;border:1px solid #bad2c5;border-radius:10px;font:inherit}#qrModal .qrNote{font-size:14px;line-height:1.8;background:#f1f7f3;padding:12px;border-radius:10px;color:#3e594c}#qrModal .qrConsent{display:flex;align-items:flex-start;gap:8px;line-height:1.7}#qrModal input[type=checkbox]{width:20px;height:20px;flex:none;margin-top:4px;accent-color:#087947}#qrModal button{font:inherit;border-radius:10px;border:0;padding:12px 18px;cursor:pointer}#qrSubmit{background:#087947;color:#fff}#qrCancel{background:#edf3ef;color:#385b48}#qrModal button:disabled{opacity:.55;cursor:wait}#qrModal .qrActions{position:sticky;bottom:0;background:#fff;padding:12px 0 4px;box-shadow:0 -6px 10px #fff}#qrError{font-size:14px;line-height:1.7;color:#a13425;min-height:24px}#qrModal a{color:#08643a;overflow-wrap:anywhere}
+</style>
+<dialog id="qrModal" aria-labelledby="qrHeading">
+<form id="qrForm">
+<h2 id="qrHeading">تسجيل المشاركة قبل الاختبار</h2>
+
+<label for="qrName">الاسم، مطلوب</label><input id="qrName" maxlength="80" autocomplete="name" required dir="auto">
+<input id="qrType" type="hidden" value="email"><label for="qrContact">الإيميل، مطلوب</label><input id="qrContact" type="email" maxlength="254" placeholder="you@example.com" required dir="ltr" autocomplete="off">
+<label class="qrConsent"><input id="qrNews" type="checkbox"><span>أوافق أستقبل أخبار وعروض كويزورا على الإيميل اللي كتبته (اختياري).</span></label>
+
+<p id="qrError" role="status" aria-live="polite"></p>
+<div class="qrActions" style="display:flex;gap:10px;flex-wrap:wrap"><button type="submit" id="qrSubmit">سجّل البيانات وابدأ الاختبار</button><button type="button" id="qrCancel">رجوع من غير بدء</button></div>
+</form></dialog>
+
+<script>
+/* Draft only. Notice and retention await owner review before publication. */
+const QR_URL='https://vgvkbsnpdpgybtsfwted.supabase.co';
+const QR_KEY='sb_publishable_v3QgxU-WmX2vOPmIr1vJZw_qaGTHVvg';
+let qrPending=null,qrResolve=null,qrBusy=false,qrContext=null;
+function qrOpen(context, suggestedName){
+ if(qrResolve)return Promise.resolve(null);
+ qrContext=context;qrPending=null;document.getElementById('qrName').value=suggestedName||'';document.getElementById('qrContact').value='';document.getElementById('qrNews').checked=false;document.getElementById('qrError').textContent='';document.getElementById('qrModal').showModal();document.getElementById('qrName').focus();
+ return new Promise(resolve=>qrResolve=resolve);
+}
+function qrCancel(){if(qrBusy)return;document.getElementById('qrModal').close();const done=qrResolve;qrResolve=null;qrPending=null;document.getElementById('qrName').value='';document.getElementById('qrContact').value='';if(done)done(null);}
+function qrNormalizeMobile(s){return s.replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-1632)).replace(/[۰-۹]/g,c=>String(c.charCodeAt(0)-1776)).replace(/[\s().-]/g,'');}
+async function qrSubmit(e){
+ e.preventDefault();if(qrBusy||!qrResolve)return;
+ const error=document.getElementById('qrError'),button=document.getElementById('qrSubmit');
+ const name=document.getElementById('qrName').value.trim(),kind=document.getElementById('qrType').value;
+ let value=document.getElementById('qrContact').value.trim().toLowerCase();
+ if(!name||name.length>80){error.textContent='اكتب اسمًا من1 إلى80حرفًا.';return;}
+ if(kind==='email'&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)){error.textContent='اكتب إيميلًا صحيح الصيغة.';return;}
+ 
+ if(value.length>254){error.textContent='وسيلة التواصل أطول من المسموح.';return;}
+ // Keep one exact request in memory if its response is lost, never persist contacts in the browser.
+ const draft={display_name:name,contact_type:kind,contact_value:value,news_consent:document.getElementById('qrNews').checked,notice_version:'2026-11-25-v2',...qrContext};
+ const stable=JSON.stringify(draft);if(!qrPending||qrPending.stable!==stable)qrPending={stable,body:{id:crypto.randomUUID(),...draft}};
+ qrBusy=true;button.disabled=true;document.getElementById('qrCancel').disabled=true;error.textContent='جاري تسجيل البيانات قبل البداية...';
+ const ctrl=new AbortController(),timeout=setTimeout(()=>ctrl.abort(),20000);
+ try {
+  const response=await fetch(QR_URL+'/rest/v1/quiz_registrations',{method:'POST',headers:{apikey:QR_KEY,Authorization:'Bearer '+QR_KEY,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(qrPending.body),signal:ctrl.signal});
+  let duplicate=false;if(!response.ok){try{const detail=await response.json();duplicate=detail.code==='23505';}catch(ignore){}if(!duplicate)throw Error('save failed');}
+  document.getElementById('qrModal').close();const regId=qrPending.body.id;const done=qrResolve;qrResolve=null;qrPending=null;document.getElementById('qrName').value='';document.getElementById('qrContact').value='';done({name,id:regId});
+ }catch(err){error.textContent='لم يتأكد تسجيل بياناتك، الاختبار لم يبدأ. جرّب مرة أخرى بنفس البيانات بعد التحقق من الاتصال. لا توجد رسوم.';}
+ finally{clearTimeout(timeout);qrBusy=false;button.disabled=false;document.getElementById('qrCancel').disabled=false;}
+}
+document.getElementById('qrForm').addEventListener('submit',qrSubmit);
+document.getElementById('qrCancel').addEventListener('click',qrCancel);
+document.getElementById('qrModal').addEventListener('cancel',e=>{e.preventDefault();qrCancel();});
+document.getElementById('qrType').addEventListener('change',()=>{const k=document.getElementById('qrType').value,c=document.getElementById('qrContact');c.type=k==='email'?'email':'tel';c.placeholder=k==='email'?'you@example.com':'+201xxxxxxxxx';c.value='';});
+
+</script>
 </body>
 </html>
