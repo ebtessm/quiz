@@ -117,9 +117,12 @@
       <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="filePicked(this)">
       <label>عدد الأسئلة المطلوب</label>
       <input type="number" id="qWant" value="10" min="3" max="30">
-      <div class="notice" id="genNotice" style="background:#fff8e6;border:1px solid #f0d58a;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px;line-height:1.8;color:#5a4300;"><b>التوليد بيستخدم خدمة Groq الخارجية لمعالجة النص.</b> ما ترفعيش بيانات شخصية أو سرية. بالضغط على زر التوليد، هيتبعت النص للخدمة. راجعي الأسئلة والإجابات قبل استخدامها.<br><span style="font-size:13px">التوليد مجاني ضمن حدود استخدام. حجم النص المسموح يعتمد على عدد الأسئلة، وقد تحتاجي للانتظار عند نفاد الحصة.</span></div>
+      <div class="notice" id="genNotice" style="background:#fff8e6;border:1px solid #f0d58a;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px;line-height:1.8;color:#5a4300;"><b>التوليد بيستخدم خدمة Groq الخارجية لمعالجة النص.</b> ما ترفعيش بيانات شخصية أو سرية. بالضغط على زر التوليد، هيتبعت النص للخدمة. راجعي الأسئلة والإجابات قبل استخدامها.<br><span style="font-size:13px">التوليد مجاني ضمن حدود استخدام. حجم النص المسموح يعتمد على عدد الأسئلة، وقد تحتاجي للانتظار عند نفاد الحصة.<br>الملفات الطويلة بتتبعت لخدمة Groq على أجزاء متتالية.</span></div>
       <button class="btn2" id="genBtn" onclick="generate()">⚡ إرسال النص وتوليد الأسئلة</button>
       <div class="spin" id="genSpin">⏳ بنقرأ الملف وبنولّد الأسئلة... ممكن ياخد حتى دقيقة</div>
+      <div id="genStatus" class="muted" style="display:none;margin-top:10px;font-weight:bold"></div>
+      <button class="btn2" id="genCancelBtn" style="display:none;margin-top:8px;background:#fff;color:#a33;border:2px solid #a33" onclick="genCancelNow()">⏹ إيقاف بعد الجزء الحالي</button>
+      <button class="btn2" id="genRetryBtn" style="display:none;margin-top:8px" onclick="genRetryManual()"></button>
       <div class="err" id="genErr"></div>
       <label for="genLanguage">لغة الأسئلة</label>
       <select id="genLanguage" style="width:100%;padding:12px;border:2px solid #dce9e0;border-radius:12px;font:inherit;background:#f6fbf8"><option value="auto">تلقائي حسب لغة الملف</option><option value="en">English</option><option value="ar">العربية</option></select>
@@ -279,29 +282,142 @@ async function filePicked(inp) {
     showErr('genErr', e.message || 'تعذر قراءة الملف.');
   }
 }
-async function generate() {
-  const err = document.getElementById('genErr'); err.style.display = 'none';
-  if (!fileText) return showErr('genErr', 'ارفع ملفًا صالحًا أولًا واستنى قراءته.');
-  const n = Math.min(Math.max(parseInt(document.getElementById('qWant').value) || 10, 3), 30);
-  const btn = document.getElementById('genBtn');
-  btn.disabled = true;
-  document.getElementById('genSpin').classList.add('show');
-  try {
-    const r = await fetch(GENQ_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
-      body: JSON.stringify({ text: fileText, count: n, language: document.getElementById("genLanguage").value }),
-    });
-    const j = await r.json();
-    if (!r.ok || j.error) throw new Error(j.error || 'تعذر التوليد.');
-    j.questions.forEach(q => addQuestion(q));
-    document.getElementById('fileName').textContent += ' — اتولّد ' + j.questions.length + ' سؤال ✅ راجعهم تحت';
-  } catch (e) {
-    showErr('genErr', e.message || 'خطأ مؤقت — حاول مرة أخرى.');
-  }
-  btn.disabled = false;
-  document.getElementById('genSpin').classList.remove('show');
+/* chunking */
+const GEN_MAX_CHARS = 30000;
+const GEN_EDGE = { ar: { at10: 14760, slope: 510 }, en: { at10: 21147, slope: 714 } }; // measured against genq v10 budget gate, estimates
+function genDetectLang(text, sel) {
+  if (sel === 'ar' || sel === 'en') return sel;
+  const a = (text.match(/[ء-ي]/g) || []).length, l = (text.match(/[A-Za-z]/g) || []).length;
+  return l > a ? 'en' : 'ar';
 }
+function genCap(lang, k) { const e = GEN_EDGE[lang]; return Math.max(0, e.at10 - e.slope * (k - 10)); }
+function genSplit(text, maxChars) {
+  // Cuts only; every character of text lands in exactly one part (join of parts === text).
+  const parts = []; let i = 0; const n = text.length;
+  while (i < n) {
+    if (n - i <= maxChars) { parts.push(text.slice(i)); break; }
+    const win = text.slice(i, i + maxChars); let cut = -1;
+    const lo = Math.floor(maxChars * 0.5);
+    for (const re of [/\n\s*\n/g, /\n/g, /[.!?؟۔][\s"'»)]*/g, /\s/g]) {
+      let m, last = -1; re.lastIndex = 0;
+      while ((m = re.exec(win)) !== null) { const end = m.index + m[0].length; if (end > lo && end <= maxChars) last = end; if (m[0].length === 0) re.lastIndex++; }
+      if (last > 0) { cut = last; break; }
+    }
+    if (cut <= 0) cut = maxChars; // no boundary at all: hard cut, still no loss
+    parts.push(text.slice(i, i + cut)); i += cut;
+  }
+  // a tiny tail (server needs 50+ chars) joins the previous part
+  if (parts.length > 1 && parts[parts.length - 1].trim().length < 60) { const t = parts.pop(); parts[parts.length - 1] += t; }
+  return parts.filter(p => p.trim().length > 0);
+}
+function genPlan(text, n, sel) {
+  const lang = genDetectLang(text, sel); const len = text.length;
+  if (len > GEN_MAX_CHARS) return { ok: false, reason: 'too_long', lang };
+  for (let m = 1; 3 * m <= n; m++) {
+    const kMax = Math.ceil(n / m);
+    const capChars = Math.floor(genCap(lang, kMax) * 0.85);
+    if (capChars < 200) continue;
+    const maxChars = Math.min(capChars, Math.ceil(len / m * 1.12) + 50);
+    const parts = m === 1 && len <= capChars ? [text] : genSplit(text, maxChars);
+    if (parts.length > m) continue;
+    const mm = parts.length, base = Math.floor(n / mm), extra = n - base * mm;
+    if (3 * mm > n) continue;
+    const order = parts.map((s, i) => i).sort((x, y) => parts[y].length - parts[x].length);
+    const counts = new Array(mm).fill(base); for (let j = 0; j < extra; j++) counts[order[j]]++;
+    if (parts.every((p, i) => p.length <= Math.floor(genCap(lang, counts[i]) * 0.85))) return { ok: true, lang, parts, counts };
+  }
+  const need = Math.ceil(len / Math.max(1, Math.floor(genCap(lang, 3) * 0.85)));
+  return { ok: false, reason: 'count_too_low', lang, minQuestions: Math.min(3 * need, 999) };
+}
+function genNorm(s) { return String(s || '').toLowerCase().replace(/[ً-ْـ]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
+function genWaitSeconds(prevLen, prevK, nextLen, nextK, lang) {
+  const ctp = lang === 'en' ? 4.2 : 3.0;
+  const est = (len, k) => Math.ceil((len + 4000) / ctp) + k * 170 + 500;
+  return (est(prevLen, prevK) + est(nextLen, nextK) > 6500) ? 65 : 8;
+}
+
+async function genRun(plan, deps, only) {
+  // Sequential, NO automatic retries. Returns state; keeps all successes.
+  const st = { total: plan.parts.length, done: [], failed: null, cancelled: false, added: 0, calls: 0, seen: deps.seen || new Set() };
+  const idx = only || plan.parts.map((_, i) => i);
+  for (let a = 0; a < idx.length; a++) {
+    const i = idx[a];
+    if (deps.cancelled()) { st.cancelled = true; break; }
+    if (a > 0) {
+      const w = genWaitSeconds(plan.parts[idx[a - 1]].length, plan.counts[idx[a - 1]], plan.parts[i].length, plan.counts[i], plan.lang);
+      deps.onWait(w, i); await deps.sleep(w * 1000);
+      if (deps.cancelled()) { st.cancelled = true; break; }
+    }
+    deps.onPart(i, plan.parts.length);
+    st.calls++;
+    try {
+      const r = await deps.fetch(plan.parts[i], plan.counts[i]);
+      const j = await r.json();
+      if (!r.ok || j.error || !Array.isArray(j.questions)) { const e = new Error(j.error || 'تعذر التوليد.'); e.status = r.status; throw e; }
+      let k = 0;
+      for (const q of j.questions) {
+        const key = genNorm(q && q.q);
+        if (key && st.seen.has(key)) continue;
+        st.seen.add(key); deps.add(q); k++;
+      }
+      st.added += k; st.done.push({ part: i, got: j.questions.length, added: k });
+    } catch (e) {
+      st.failed = { part: i, message: e.message || 'خطأ', status: e.status || 0 };
+      st.remaining = idx.slice(a);
+      break;
+    }
+  }
+  if (st.cancelled) st.remaining = idx.filter(i => !st.done.some(d => d.part === i));
+  return st;
+}
+
+let genCancel = false, genLastPlan = null, genSeen = new Set();
+function genCancelNow() { genCancel = true; document.getElementById('genCancelBtn').disabled = true; document.getElementById('genStatus').textContent = 'هنوقف بعد الجزء الحالي…'; }
+function genSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+async function generate(only) {
+  const err = document.getElementById('genErr'); err.style.display = 'none';
+  const st = document.getElementById('genStatus'), btn = document.getElementById('genBtn'), cb = document.getElementById('genCancelBtn'), rb = document.getElementById('genRetryBtn');
+  rb.style.display = 'none';
+  let plan = genLastPlan;
+  if (!Array.isArray(only)) {
+    if (!fileText) return showErr('genErr', 'ارفع ملفًا صالحًا أولًا واستنى قراءته.');
+    const n = Math.min(Math.max(parseInt(document.getElementById('qWant').value) || 10, 3), 30);
+    plan = genPlan(fileText, n, document.getElementById('genLanguage').value);
+    if (!plan.ok) {
+      return showErr('genErr', plan.reason === 'too_long'
+        ? 'النص أطول من ٣٠ ألف حرف. قسّمي الملف.'
+        : 'النص طويل على العدد ده. زوّدي عدد الأسئلة لـ ' + plan.minQuestions + ' على الأقل أو قلّلي حجم الملف. مفيش حاجة اتبعتت.');
+    }
+    genLastPlan = plan; genSeen = new Set();
+  }
+  genCancel = false; btn.disabled = true; cb.disabled = false; cb.style.display = ''; st.style.display = 'block';
+  document.getElementById('genSpin').classList.add('show');
+  const total = plan.counts.reduce((a, b) => a + b, 0);
+  const res = await genRun(plan, {
+    seen: genSeen,
+    cancelled: () => genCancel,
+    sleep: genSleep,
+    fetch: (text, count) => fetch(GENQ_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY }, body: JSON.stringify({ text, count, language: plan.lang }) }),
+    add: q => addQuestion(q),
+    onWait: (w) => { st.textContent = 'بنستنى ' + w + ' ثانية قبل الجزء الجاي عشان حد الاستخدام…'; },
+    onPart: (i, m) => { st.textContent = 'الجزء ' + (i + 1) + ' من ' + m + ' — جاري التوليد'; },
+  }, Array.isArray(only) ? only : null);
+  const got = genSeen.size;
+  document.getElementById('genSpin').classList.remove('show'); cb.style.display = 'none'; btn.disabled = false;
+  const per = res.done.map(d => 'جزء ' + (d.part + 1) + ': ' + d.added).join('، ');
+  let msg = 'اتضاف ' + res.added + ' سؤال فعلًا' + (Array.isArray(only) ? '' : ' من ' + total + ' مطلوب') + (per ? ' (' + per + ')' : '') + '. راجعيهم تحت.';
+  if (res.failed || res.cancelled) {
+    const miss = (res.remaining || []).map(i => i + 1).join('، ');
+    msg += (res.failed ? ' وقف عند الجزء ' + (res.failed.part + 1) + ': ' + res.failed.message : ' اتوقف بطلبك.') + ' الأجزاء الناقصة: ' + miss + '. الأسئلة اللي اتضافت اتحفظت ومفيش إعادة تلقائية.';
+    genLastPlan = plan; genRemaining = res.remaining;
+    rb.style.display = ''; rb.textContent = 'جرّبي الأجزاء الناقصة بس (' + miss + ')';
+    if (res.failed) showErr('genErr', res.failed.message);
+  }
+  st.textContent = msg;
+  document.getElementById('fileName').textContent += ' — ' + msg.split('.')[0];
+}
+let genRemaining = [];
+function genRetryManual() { generate(genRemaining); }
 function addQuestion(gen) {
   qCount++;
   const n = qCount;
