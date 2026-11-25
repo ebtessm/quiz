@@ -113,6 +113,10 @@
     <p class="muted" id="saveStatus" role="status" aria-live="polite"></p>
   </div>
 
+  <div class="card" id="closed" style="display:none;">
+    <p>هذا الاختبار متوقف حاليًا. ارجع للرابط لاحقًا أو تواصل مع المدرّب.</p>
+  </div>
+
   <div class="card" id="bad" style="display:none;">
     <p>الرابط غير صحيح أو الاختبار غير موجود. تأكد من نسخ الرابط كاملًا.</p>
   </div>
@@ -198,9 +202,11 @@ async function load() {
   const rq = await supa.from('quizzes').select('*').eq('id', quizId).single();
   if (rq.error || !rq.data) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('bad').style.display = ''; }
   quiz = rq.data;
+  if (quiz.is_open === false) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('closed').style.display = ''; }
   document.getElementById('qtitle').textContent = quiz.title;
   document.title = quiz.title + ' — تحدي';
   const rs = await supa.from('questions').select('*').eq('quiz_id', quizId).order('ord');
+  if (rs.error || !(rs.data || []).length) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('closed').style.display = ''; }
   applyExamLanguage(rs.data || []);
   qs = shuffle(rs.data || []).map(q => {
     const type = q.type || 'mcq';
@@ -218,10 +224,15 @@ async function load() {
   });
   if (!qs.length) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('bad').style.display = ''; }
 }
-function begin() {
+async function begin() {
   student = document.getElementById('sname').value.trim();
   if (!student) { const e = document.getElementById('nameErr'); e.textContent = tr('اكتب اسمك أولًا.', 'Enter your name first.'); e.style.display = 'block'; return; }
   audio(); // unlock sound on first tap
+  const goBtn = document.querySelector('#nameCard .btn'); if (goBtn) goBtn.disabled = true;
+  const chk = await supa.from('quizzes').select('*').eq('id', quizId).single();
+  if (goBtn) goBtn.disabled = false;
+  if (chk.error || !chk.data) { const e = document.getElementById('nameErr'); e.textContent = tr('تعذر التحقق من حالة الاختبار. حاول مرة أخرى.', 'Could not check the exam status. Please try again.'); e.style.display = 'block'; return; }
+  if (chk.data.is_open === false) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('closed').style.display = ''; }
   t0 = Date.now();
   document.getElementById('nameCard').style.display = 'none';
   show('quiz'); render();
