@@ -141,7 +141,7 @@
     </div>
 
     <div id="qlist"></div>
-    <button class="btn2" onclick="addQuestion()">+ إضافة سؤال يدويًا</button><button class="btn2" onclick="addQuestion({type:'code_error',q:'',o:['','','',''],a:0})">+ اكتشف الخطأ في الكود</button>
+    <button class="btn2" onclick="addQuestion()">+ إضافة سؤال يدويًا</button><button class="btn2" onclick="document.getElementById('qImportFile').click()">📥 استيراد أسئلة جاهزة من Excel</button><input type="file" id="qImportFile" accept=".xlsx,.csv" style="display:none" onchange="importReadyQuestions(this)"><div class="err" id="qImportErr"></div><button class="btn2" onclick="addQuestion({type:'code_error',q:'',o:['','','',''],a:0})">+ اكتشف الخطأ في الكود</button>
     <button class="btn" onclick="saveQuiz()">حفظ الاختبار والحصول على الرابط</button>
     <div class="err" id="buildErr"></div>
     <div class="ok" id="buildOk"></div>
@@ -480,6 +480,30 @@ function addQuestion(gen) {
   }
   div.querySelector('.qe').value = gen ? (gen.e || '') : '';
   div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function importReadyQuestions(inp){
+  const err=document.getElementById('qImportErr');err.style.display='none';
+  const f=inp.files&&inp.files[0];inp.value='';
+  const fail=m=>{err.textContent=m;err.style.display='block';};
+  try{
+    if(!f)return;
+    if(f.size>1500000)return fail('الحد الأقصى 1.5 ميجابايت.');
+    if(!/\.(xlsx|csv)$/i.test(f.name))return fail('اختاري ملف XLSX أو CSV.');
+    const wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellFormula:false,cellHTML:false});
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:false});
+    const H=['question','option1','option2','option3','option4','answer','explanation'];
+    if(rows.length<2||rows.length>101)return fail('الملف يحتاج صف عنوان ثم من 1 إلى 100 سؤال.');
+    if(H.some((h,i)=>String(rows[0][i]).trim().toLowerCase()!==h))return fail('عناوين الأعمدة لازم تكون: '+H.join(' , '));
+    const out=[];
+    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r.some(x=>String(x).trim()))continue;
+      const q=String(r[0]).trim(),o=r.slice(1,5).map(x=>String(x).trim()),a=Number(r[5]);
+      if(!q||o.some(x=>!x)||new Set(o).size!==4||!Number.isInteger(a)||a<1||a>4)return fail('راجعي الصف '+(i+1)+': سؤال وأربعة اختيارات مختلفة وإجابة من 1 إلى 4.');
+      out.push({q,o,a:a-1,e:String(r[6]||'').trim(),type:'mcq'});}
+    if(!out.length)return fail('لا توجد أسئلة في الملف.');
+    out.forEach(x=>addQuestion(x));
+    const ok=document.getElementById('buildOk');ok.textContent='تمت إضافة '+out.length+' سؤال للقائمة. راجعيها ثم اضغطي حفظ الاختبار.';ok.style.display='block';
+  }catch(e){fail('تعذر قراءة الملف.');}
 }
 async function saveQuiz() {
   const title = document.getElementById('quizTitle').value.trim();
