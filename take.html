@@ -202,6 +202,7 @@ async function load() {
   const rq = await supa.from('quizzes').select('*').eq('id', quizId).single();
   if (rq.error || !rq.data) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('bad').style.display = ''; }
   quiz = rq.data;
+  UNTIMED = /\u2063\u2063$/.test(String(quiz.title || '')); quiz.title = String(quiz.title || '').replace(/\u2063+$/, '');
   if (quiz.is_open === false) { document.getElementById('nameCard').style.display = 'none'; return document.getElementById('closed').style.display = ''; }
   document.getElementById('qtitle').textContent = quiz.title;
   document.title = quiz.title + ' — تحدي';
@@ -252,10 +253,12 @@ function hud() {
   sp.textContent = '🔥 ×' + streak;
   sp.classList.toggle('zero', streak < 2);
 }
+var UNTIMED = false;
 var TIME_FACTOR = (quizId === 'a27a914a-c631-4924-957e-eaad42c6165f') ? 2 : 1;
 function qTime(q) { const base = splitCodeQuestion(q.q) ? 60 : ((q.type === 'match' || q.type === 'order') ? 45 : (q.type === 'fill' ? 30 : QTIME)); return base * TIME_FACTOR; }
 function startTimer() {
   clearInterval(timerId);
+  if (UNTIMED) { timeLeft = 0; document.getElementById('timerpill').style.display = 'none'; return; }
   timeLeft = qTime(qs[i]);
   const tp = document.getElementById('timerpill');
   tp.textContent = timerLabel(timeLeft); tp.classList.remove('low');
