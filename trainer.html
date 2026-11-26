@@ -112,7 +112,7 @@
 <div class="card" id="builder" style="display:none;">
     <h3 style="color:var(--green)">إنشاء اختبار جديد</h3>
     <label>عنوان الاختبار</label>
-    <input type="text" id="quizTitle" placeholder="مثال: مراجعة الوحدة الثالثة">
+    <input type="text" id="quizTitle" placeholder="مثال: مراجعة الوحدة الثالثة"><label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:700"><input type="checkbox" id="noTimer" style="width:auto;margin:0"> ⏱ بدون تايم (الأسئلة من غير مؤقت)</label>
 
     <div class="tabs" style="margin-top:16px;">
       <button id="tabFile" class="active" onclick="setBuild('file')">📄 توليد من ملف</button>
@@ -506,8 +506,9 @@ async function importReadyQuestions(inp){
   }catch(e){fail('تعذر قراءة الملف.');}
 }
 async function saveQuiz() {
-  const title = document.getElementById('quizTitle').value.trim();
-  if (!title) return showErr('buildErr', 'اكتب عنوان الاختبار أولًا.');
+  const title0 = document.getElementById('quizTitle').value.trim();
+  const title = title0 + (title0 && document.getElementById('noTimer').checked ? NT_MARK : '');
+  if (!title0) return showErr('buildErr', 'اكتب عنوان الاختبار أولًا.');
   const rows = [];
   let ord = 0;
   for (let i = 1; i <= qCount; i++) {
@@ -558,6 +559,9 @@ function safeNode(tag, text, className) {
   if (className) node.className = className;
   return node;
 }
+const NT_MARK = '\u2063\u2063';
+const ntClean = s => String(s || '').replace(/\u2063+$/, '');
+const ntIs = s => /\u2063\u2063$/.test(String(s || ''));
 async function loadDashboard() {
   const box = document.getElementById('quizList');
   box.replaceChildren(safeNode('p', 'جاري تحميل الاختبارات...', 'muted'));
@@ -567,8 +571,22 @@ async function loadDashboard() {
     box.replaceChildren();
     if (!r.data || !r.data.length) { box.append(safeNode('p', 'لا اختبارات بعد، أنشئ أول اختبار من الأعلى.', 'muted')); return; }
     r.data.forEach(q => {
+      const rawTitle = q.title; q.untimed = ntIs(rawTitle); q.title = ntClean(rawTitle);
       const d = safeNode('div'); d.className = 'quiz-item'; d.style.cursor = 'pointer';
       d.append(safeNode('b', q.title), safeNode('span', ' · ' + new Date(q.created_at).toLocaleDateString('ar-EG'), 'muted'), safeNode('div', 'اضغط لعرض نتائج الطلاب', 'muted'));
+      {
+        const trow = safeNode('div'); trow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap';
+        const tb = safeNode('span', q.untimed ? '⏱ بدون تايم' : '⏱ بتايم'); tb.style.cssText = 'font-weight:700;font-size:14px;color:' + (q.untimed ? '#0b5830' : '#555');
+        const tbtn = safeNode('button', q.untimed ? 'تفعيل التايم' : 'إلغاء التايم'); tbtn.type = 'button'; tbtn.className = 'btn2'; tbtn.style.cssText = 'width:auto;padding:8px 16px;margin:0';
+        tbtn.onclick = async (ev) => {
+          ev.stopPropagation();
+          tbtn.disabled = true;
+          const u = await supa.from('quizzes').update({ title: q.title + (q.untimed ? '' : NT_MARK) }).eq('id', q.id).select();
+          if (u.error || !u.data || !u.data.length) { tbtn.disabled = false; tb.textContent = 'تعذر تغيير التايم. لم يتغير شيء.'; tb.style.color = '#c81e1e'; return; }
+          loadDashboard();
+        };
+        trow.append(tb, tbtn); d.append(trow);
+      }
       if ('is_open' in q) {
         const open = q.is_open !== false;
         const row = safeNode('div'); row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap';
@@ -607,7 +625,7 @@ async function exportResults(quizId, quizTitle) {
   try {
     const qr = await supa.from('quizzes').select('id,title').order('created_at', { ascending: false });
     if (qr.error) throw new Error(qr.error.message);
-    const titles = {}; (qr.data || []).forEach(x => { titles[x.id] = x.title; });
+    const titles = {}; (qr.data || []).forEach(x => { titles[x.id] = ntClean(x.title); });
     let aq = supa.from('attempts').select('*').order('created_at', { ascending: false });
     if (quizId) aq = aq.eq('quiz_id', quizId);
     const ar = await aq;
